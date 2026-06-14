@@ -41,10 +41,8 @@ jobs:
       - uses: oxidize-rb/actions/cross-gem@v1
         id: cross-gem
         with:
-          # Precompiled targets. Add newer minors (3.5, then 4.0) here as they
-          # release and the cross-compile toolchain supports them.
           platform: ${{ matrix.platform }}
-          ruby-versions: "3.4"
+          ruby-versions: "3.4, 4.0"
       - uses: actions/upload-artifact@v4
         with:
           name: cross-gem-${{ matrix.platform }}

@@ -50,9 +50,9 @@ welcome.
 gem "yrb-lite"
 ```
 
-Requires Ruby 3.4 or newer (including Ruby 4). Precompiled gems ship for Linux
-and macOS on Ruby 3.4, so installing there needs no Rust. Newer Ruby versions
-and other platforms build from source, which needs [Rust](https://rustup.rs).
+Requires Ruby 3.4 or newer. Precompiled gems ship for Linux and macOS on Ruby
+3.4 and 4.0, so installing there needs no Rust. Other platforms (and any other
+Ruby version) build from source, which needs [Rust](https://rustup.rs).
 
 To work on the gem itself:
 

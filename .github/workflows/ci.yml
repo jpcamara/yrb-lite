@@ -12,10 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.4 is the minimum supported Ruby; ruby-head tracks the next major
-        # (Ruby 4) so regressions surface early without blocking the pipeline.
-        ruby: ["3.4", "ruby-head"]
-    continue-on-error: ${{ matrix.ruby == 'ruby-head' }}
+        # Supported Rubies: 3.4 (minimum) and 4.0.
+        ruby: ["3.4", "4.0"]
     steps:
       - uses: actions/checkout@v5
 
