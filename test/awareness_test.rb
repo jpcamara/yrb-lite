@@ -127,6 +127,45 @@ class AwarenessTest < Minitest::Test
     refute_empty update
   end
 
+  def test_awareness_client_ids_extracts_ids_from_awareness_message
+    peer = YrbLite::Awareness.new(111)
+    peer.set_local_state('{"user": "alice"}')
+    msg = peer.encode_awareness_update
+
+    server = YrbLite::Awareness.new
+    assert_equal [111], server.awareness_client_ids(msg)
+  end
+
+  def test_awareness_client_ids_ignores_sync_messages
+    awareness = YrbLite::Awareness.new
+    sync_msg = awareness.encode_update("\x01\x02\x03")
+    assert_empty awareness.awareness_client_ids(sync_msg)
+  end
+
+  def test_remove_clients_unknown_returns_empty
+    server = YrbLite::Awareness.new
+    assert_empty server.remove_clients([999])
+  end
+
+  def test_remove_clients_announces_and_clears_presence
+    peer = YrbLite::Awareness.new(111)
+    peer.set_local_state('{"user": "alice"}')
+    msg = peer.encode_awareness_update
+
+    server = YrbLite::Awareness.new
+    server.handle(msg)
+
+    other = YrbLite::Awareness.new
+    other.handle(msg)
+    assert_includes other.awareness_client_ids(other.encode_awareness_update), 111
+
+    removal = server.remove_clients([111])
+    refute_empty removal
+
+    other.handle(removal)
+    refute_includes other.awareness_client_ids(other.encode_awareness_update), 111
+  end
+
   def test_constants
     assert_equal 0, YrbLite::MSG_SYNC
     assert_equal 1, YrbLite::MSG_AWARENESS

@@ -81,37 +81,51 @@ response = awareness.handle(incoming_data)
 send_to_peer(response) unless response.empty?
 ```
 
-### ActionCable Integration Example
+### ActionCable Integration
+
+`YrbLite::Sync` is a channel concern that implements the full y-websocket
+protocol (document sync + awareness/presence) over ActionCable:
 
 ```ruby
 # app/channels/document_channel.rb
 class DocumentChannel < ApplicationCable::Channel
-  def subscribed
-    @awareness = find_or_create_awareness(params[:id])
-    stream_for @awareness
+  include YrbLite::Sync
 
-    # Send initial sync messages to new client
-    transmit(data: encode(awareness.start))
+  # Optional persistence:
+  # on_load { |key| Document.find_by(key: key)&.content }
+  # on_save { |key, update| Document.find_by(key: key)&.update!(content: update) }
+
+  def subscribed
+    sync_for params[:id]
   end
 
   def receive(data)
-    message = decode(data["data"])
-    response = @awareness.handle(message)
-
-    # Send response if needed
-    transmit(data: encode(response)) unless response.empty?
-
-    # Broadcast updates to other clients
-    # (you may want to filter based on message type)
-    DocumentChannel.broadcast_to(@awareness, data: data["data"])
+    sync_receive(data)
   end
 
-  private
-
-  def encode(binary) = Base64.strict_encode64(binary)
-  def decode(encoded) = Base64.strict_decode64(encoded)
+  def unsubscribed
+    sync_clear_presence
+  end
 end
 ```
+
+It keeps one shared `YrbLite::Awareness` per document key (creation is
+mutex-serialized; everything after runs lock-free on the thread-safe native
+types), answers SyncStep1s directly, relays document and awareness changes
+to other subscribers without echoing them back to the sender, and calls
+`on_save` after every message that modified the document.
+
+`sync_clear_presence` (from `unsubscribed`) tracks the awareness client IDs
+seen on a connection and broadcasts a removal when it closes, so a dropped
+socket or closed tab doesn't leave a stale cursor lingering until the
+client-side timeout reaps it. It's optional but recommended for clean
+presence.
+
+Messages are the standard y-protocols binary messages, base64-encoded as
+`{ "m" => "<base64>" }`. A complete working example — Rails app, Tiptap
+editor, custom browser-side `ActionCableProvider`, and an automated
+end-to-end test — lives in
+[`examples/actioncable-demo`](examples/actioncable-demo).
 
 ### User Awareness/Presence
 

@@ -1,0 +1,61 @@
+.demo {
+  max-width: 760px;
+  margin: 2rem auto;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1a1a1a;
+}
+
+.demo header h1 {
+  font-size: 1.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.demo header p {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.status {
+  font-size: 0.8rem;
+}
+
+.status[data-state="connected"] { color: #15803d; }
+.status[data-state="disconnected"] { color: #b91c1c; }
+
+#editor .tiptap {
+  border: 1px solid #d4d4d8;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  min-height: 320px;
+  outline: none;
+  line-height: 1.6;
+}
+
+#editor .tiptap:focus-within {
+  border-color: #6366f1;
+}
+
+/* Remote cursors (collaboration-cursor) */
+.collaboration-cursor__caret {
+  border-left: 1px solid;
+  border-right: 1px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+  position: relative;
+  word-break: normal;
+}
+
+.collaboration-cursor__label {
+  border-radius: 3px 3px 3px 0;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  left: -1px;
+  line-height: normal;
+  padding: 0.1rem 0.3rem;
+  position: absolute;
+  top: -1.3em;
+  user-select: none;
+  white-space: nowrap;
+}

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require_relative "fixtures/yjs_fixtures"
 require "yrb_lite/sync"
 
 class SyncTest < Minitest::Test
@@ -13,50 +14,80 @@ class SyncTest < Minitest::Test
     YrbLite::Sync.reset!
   end
 
-  def test_doc_for_creates_new_doc
-    doc1 = @helper.doc_for("test-room")
-    doc2 = @helper.doc_for("test-room")
+  def test_awareness_for_returns_same_instance_for_same_key
+    a1 = YrbLite::Sync.awareness_for("test-room")
+    a2 = YrbLite::Sync.awareness_for("test-room")
 
-    assert_same doc1, doc2, "Should return same doc for same key"
+    assert_same a1, a2
   end
 
-  def test_doc_for_different_keys
-    doc1 = @helper.doc_for("room-1")
-    doc2 = @helper.doc_for("room-2")
+  def test_awareness_for_different_keys
+    a1 = YrbLite::Sync.awareness_for("room-1")
+    a2 = YrbLite::Sync.awareness_for("room-2")
 
-    refute_same doc1, doc2, "Should return different docs for different keys"
+    refute_same a1, a2
   end
 
-  def test_docs_are_functional
-    doc = @helper.doc_for("test-room")
+  def test_awareness_for_applies_on_load_state_once
+    source = YrbLite::Doc.new
+    target = YrbLite::Doc.new
+    source.apply_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
+    state = source.encode_state_as_update
 
-    assert_kind_of YrbLite::Doc, doc
-    assert_equal "\x00".b, doc.encode_state_vector
+    calls = 0
+    loader = lambda do |key|
+      calls += 1
+      assert_equal "loaded-room", key
+      state
+    end
+
+    awareness = YrbLite::Sync.awareness_for("loaded-room", loader)
+    YrbLite::Sync.awareness_for("loaded-room", loader)
+
+    assert_equal 1, calls, "on_load should run once per key"
+    target.apply_update(awareness.encode_state_as_update)
+    assert_equal source.encode_state_vector, target.encode_state_vector
   end
 
-  def test_reset_clears_docs
-    @helper.doc_for("room-1")
-    @helper.doc_for("room-2")
+  def test_awareness_for_is_thread_safe_on_creation
+    instances = 16.times.map do
+      Thread.new { YrbLite::Sync.awareness_for("contended-room") }
+    end.map(&:value)
 
-    refute_empty YrbLite::Sync.docs
+    assert_equal 1, instances.uniq(&:object_id).length,
+                 "Concurrent subscribers must share one document"
+  end
+
+  def test_reset_clears_registry
+    YrbLite::Sync.awareness_for("room-1")
+    refute_empty YrbLite::Sync.registry
 
     YrbLite::Sync.reset!
 
-    assert_empty YrbLite::Sync.docs
+    assert_empty YrbLite::Sync.registry
   end
 
-  def test_sync_step1_returns_encoded_message
-    doc = @helper.doc_for("test-room")
-    msg = doc.sync_step1
+  def test_broadcast_classification
+    sync_step1 = "\x00\x00\x01\x00".b
+    sync_step2 = "\x00\x01\x01\x00".b
+    sync_update = "\x00\x02\x01\x00".b
+    awareness_update = "\x01\x01\x00".b
+    query_awareness = "\x03".b
 
-    # SyncStep1 message format: [0 (MSG_SYNC)][0 (STEP1)][length][state_vector]
-    assert msg.is_a?(String)
-    assert msg.encoding == Encoding::ASCII_8BIT
-    assert msg.bytesize >= 3 # At minimum: msg_type + sync_type + length
+    refute @helper.send(:sync_broadcast?, sync_step1), "SyncStep1 is addressed to the server"
+    assert @helper.send(:sync_broadcast?, sync_step2)
+    assert @helper.send(:sync_broadcast?, sync_update)
+    assert @helper.send(:sync_broadcast?, awareness_update)
+    refute @helper.send(:sync_broadcast?, query_awareness)
+
+    refute @helper.send(:sync_modifies_doc?, sync_step1)
+    assert @helper.send(:sync_modifies_doc?, sync_step2)
+    assert @helper.send(:sync_modifies_doc?, sync_update)
+    refute @helper.send(:sync_modifies_doc?, awareness_update)
   end
 
   def test_handle_sync_message_returns_tuple
-    doc = @helper.doc_for("test-room")
+    doc = YrbLite::Doc.new
 
     # Create a SyncStep1 message from another doc
     other_doc = YrbLite::Doc.new

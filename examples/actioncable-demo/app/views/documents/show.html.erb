@@ -1,0 +1,16 @@
+<div class="demo">
+  <header>
+    <h1>yrb-lite collaborative editor</h1>
+    <p>
+      Document <code><%= @document_id %></code> —
+      open this page in another window to edit together.
+      <a href="<%= document_content_path(@document_id) %>" target="_blank">
+        View server-side ProseMirror JSON</a> (extracted natively from the CRDT, no JS).
+    </p>
+    <p id="status" class="status">connecting…</p>
+  </header>
+
+  <div id="editor" data-document-id="<%= @document_id %>"></div>
+</div>
+
+<script src="/app.js" defer></script>

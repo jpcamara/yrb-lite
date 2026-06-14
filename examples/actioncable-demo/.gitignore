@@ -1,0 +1,8 @@
+/log/*
+!/log/.keep
+/tmp/*
+!/tmp/.keep
+/frontend/node_modules/
+/public/app.js
+.DS_Store
+/config/master.key

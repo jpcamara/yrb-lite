@@ -1,0 +1,19 @@
+{
+  "name": "actioncable-demo-frontend",
+  "private": true,
+  "scripts": {
+    "build": "bun build src/app.js --outfile ../public/app.js --minify",
+    "watch": "bun build src/app.js --outfile ../public/app.js --watch"
+  },
+  "dependencies": {
+    "@rails/actioncable": "^8.0.0",
+    "@tiptap/core": "^2.11.0",
+    "@tiptap/pm": "^2.11.0",
+    "@tiptap/starter-kit": "^2.11.0",
+    "@tiptap/extension-collaboration": "^2.11.0",
+    "@tiptap/extension-collaboration-cursor": "^2.11.0",
+    "lib0": "^0.2.97",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.20"
+  }
+}

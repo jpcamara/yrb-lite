@@ -3,8 +3,10 @@ mod prosemirror;
 use magnus::{
     exception, function, method, prelude::*, Error, RString, Ruby, TryConvert, Value,
 };
+use yrs::encoding::read::Cursor;
+use yrs::sync::protocol::MessageReader;
 use yrs::sync::{Awareness, DefaultProtocol, Message, Protocol, SyncMessage};
-use yrs::updates::decoder::Decode;
+use yrs::updates::decoder::{Decode, DecoderV1};
 use yrs::updates::encoder::{Encode, Encoder, EncoderV1};
 use yrs::{Doc, ReadTxn, Transact};
 
@@ -449,6 +451,53 @@ impl RbAwareness {
         })
         .map_err(runtime_error)
     }
+
+    /// Decode the awareness client IDs referenced by a protocol message
+    /// (which may pack several sub-messages together). Sync sub-messages are
+    /// ignored. The ActionCable layer uses this to learn which presence
+    /// states arrived on a connection, so it can clear them when that
+    /// connection closes.
+    fn awareness_client_ids(&self, data: RString) -> Result<Vec<u64>, Error> {
+        let data_bytes = copy_bytes(data);
+        nogvl(move || -> Result<Vec<u64>, String> {
+            let mut decoder = DecoderV1::new(Cursor::new(&data_bytes));
+            let mut ids = Vec::new();
+            for msg in MessageReader::new(&mut decoder) {
+                if let Message::Awareness(update) = msg.map_err(|e| e.to_string())? {
+                    ids.extend(update.clients.keys().copied());
+                }
+            }
+            Ok(ids)
+        })
+        .map_err(runtime_error)
+    }
+
+    /// Mark the given clients as disconnected and return an awareness protocol
+    /// message (null-state, bumped clock) announcing their removal to peers.
+    /// Only clients currently known to this Awareness are removed; unknown
+    /// IDs are skipped (so we never broadcast phantom removals). Returns an
+    /// empty string when nothing was removed.
+    fn remove_clients(&self, client_ids: Vec<u64>) -> Result<RString, Error> {
+        let awareness = &self.0;
+        let encoded = nogvl(move || -> Result<Vec<u8>, String> {
+            let mut removed = Vec::new();
+            for id in client_ids {
+                if awareness.meta(id).is_some() {
+                    awareness.remove_state(id);
+                    removed.push(id);
+                }
+            }
+            if removed.is_empty() {
+                return Ok(Vec::new());
+            }
+            let update = awareness
+                .update_with_clients(removed)
+                .map_err(|e| e.to_string())?;
+            Ok(Message::Awareness(update).encode_v1())
+        })
+        .map_err(runtime_error)?;
+        Ok(binary_string(&encoded))
+    }
 }
 
 // ============================================================================
@@ -519,6 +568,11 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         "encode_awareness_update",
         method!(RbAwareness::encode_awareness_update, 0),
     )?;
+    awareness_class.define_method(
+        "awareness_client_ids",
+        method!(RbAwareness::awareness_client_ids, 1),
+    )?;
+    awareness_class.define_method("remove_clients", method!(RbAwareness::remove_clients, 1))?;
 
     // Define message type constants
     module.const_set("MSG_SYNC", 0u8)?;
