@@ -13,7 +13,6 @@ import * as Y from "yjs"
 import * as syncProtocol from "y-protocols/sync"
 import * as encoding from "lib0/encoding"
 import * as decoding from "lib0/decoding"
-import { serverText } from "./server_read.mjs"
 
 const PORT = process.env.PORT || 3777
 const ROOM = process.env.ROOM || `crash-${process.pid}`
@@ -125,7 +124,8 @@ for (let i = 1; i <= EDITS; i++) {
   }
 }
 
-const liveText = await serverText(`http://localhost:${PORT}`, ROOM)
+const live = await (await fetch(`http://localhost:${PORT}/docs/${ROOM}/content`)).json()
+const liveText = (live.content || []).flatMap((n) => (n.content || []).map((t) => t.text)).join("\n")
 const liveMissing = []
 for (let i = 1; i <= EDITS; i++) if (!liveText.includes(`edit-${i}`)) liveMissing.push(i)
 

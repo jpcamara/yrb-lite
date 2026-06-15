@@ -13,7 +13,6 @@ import * as Y from "yjs"
 import * as syncProtocol from "y-protocols/sync"
 import * as encoding from "lib0/encoding"
 import * as decoding from "lib0/decoding"
-import { serverDoc } from "./server_read.mjs"
 
 // WS_PORTS (comma-separated) spreads clients across multiple AnyCable nodes;
 // falls back to a single WS_PORT.
@@ -108,13 +107,11 @@ const auditCount = async (room) => {
   try { return (await (await fetch(`http://localhost:${HTTP_PORT}/docs/${room}/audit`)).json()).count }
   catch { return 0 }
 }
-// Memory mode has no audit log, so count applied paragraphs from the server's
-// CRDT state.
+// Memory mode has no audit log, so count applied paragraphs from /content.
 const serverParagraphs = async (room) => {
   try {
-    const { doc } = await serverDoc(`http://localhost:${HTTP_PORT}`, room)
-    if (!doc) return 0
-    return [...doc.getXmlFragment("default").toArray()].filter((p) => p.length).length
+    const j = await (await fetch(`http://localhost:${HTTP_PORT}/docs/${room}/content`)).json()
+    return (j.content || []).filter((n) => n.type === "paragraph" && (n.content || []).length).length
   } catch { return 0 }
 }
 

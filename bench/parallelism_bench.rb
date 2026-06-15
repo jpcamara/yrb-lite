@@ -20,16 +20,14 @@ end
 
 work = lambda do
   OPS_PER_THREAD.times do
-    # Parse + apply a large update into a fresh doc, then re-encode its state.
-    # It's all heavy native work, and embarrassingly parallel.
-    doc = YrbLite::Doc.new
-    doc.apply_update(UPDATE)
-    doc.encode_state_as_update
+    # Parse + apply a large update into a fresh doc, then extract ProseMirror
+    # JSON. It's all heavy native work, and embarrassingly parallel.
+    YrbLite.extract_prosemirror_json(UPDATE, nil)
   end
 end
 
 # Warm up (first call pays any lazy init)
-YrbLite::Doc.new.apply_update(UPDATE)
+YrbLite.extract_prosemirror_json(UPDATE, nil)
 
 serial = time { THREADS.times { work.call } }
 parallel = time { THREADS.times.map { Thread.new(&work) }.each(&:join) }
