@@ -6,6 +6,34 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0.beta2] - 2026-06-16
+
+### Added
+
+- Reliable delivery (opt-in, client-driven). A client may tag a document update
+  with an `"id"`; the server replies `{ "ack": <id> }` once the update has been
+  accepted (recorded in audit mode, applied in fast mode). This lets an
+  ack-aware client retain and retransmit an update until delivery is confirmed,
+  so an edit can't be silently lost on a flaky connection. Stock clients send no
+  `"id"`, never get acks, and behave exactly as before.
+- A vendored, ack-aware `@y-rb/actioncable` provider in the demo
+  (`reliable_actioncable_provider.mjs`) that adds reliable delivery with
+  "sync-since-last-ack" framing (the unacknowledged tail is sent as one merged,
+  causally-complete delta), plus a minimal reference client and an intensive
+  message-loss stress test.
+
+### Fixed
+
+- Causal-gap protection. The authoritative, fast, and store paths now reject a
+  document update that isn't causally ready -- one whose dependencies are
+  missing because an earlier update was lost in transit or its durable record
+  failed -- and ask the client to resync, instead of recording or relaying an
+  un-integrable update that would leave the log permanently pending. Adds native
+  `Doc#update_ready?`/`#pending?` (cheap, read-only checks) used to gate the
+  record-before-distribute path.
+
+## [0.1.0.beta1]
+
 ### Added
 
 - Thread-safe `YrbLite::Doc` and `YrbLite::Awareness` over `yrs` (magnus/rb-sys
@@ -26,4 +54,6 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Precompiled native gems for common platforms (no Rust toolchain needed to
   install) via the cross-gem workflow.
 
-[Unreleased]: https://github.com/jpcamara/yrb-lite/commits/main
+[Unreleased]: https://github.com/jpcamara/yrb-lite/compare/v0.1.0.beta2...main
+[0.1.0.beta2]: https://github.com/jpcamara/yrb-lite/compare/v0.1.0.beta1...v0.1.0.beta2
+[0.1.0.beta1]: https://github.com/jpcamara/yrb-lite/releases/tag/v0.1.0.beta1
