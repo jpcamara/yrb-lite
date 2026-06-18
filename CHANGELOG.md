@@ -6,6 +6,28 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0.beta3] - 2026-06-18
+
+### Changed
+
+- Upgraded the bundled `yrs` (y-crdt) from 0.21 to 0.27.2. No change to the
+  `YrbLite::Doc`, `YrbLite::Awareness`, or `YrbLite::Sync` public API; existing
+  code and the wire protocol are unaffected.
+- Thread-safety is preserved across the upgrade. yrs 0.27 dropped `Awareness`'s
+  internal locking (its mutating methods now take `&mut self`, and `Awareness`
+  is no longer `Sync`), so `YrbLite::Awareness` now serializes access through an
+  internal `Mutex`. The lock is taken only while the GVL is released and is
+  never held across the GVL boundary, so concurrent access from multiple Ruby
+  threads stays safe and deadlock-free, and document reads still run in parallel
+  (they operate on a cheaply-cloned, `Arc`-backed `Doc` handle, not under the
+  presence lock).
+
+### Build
+
+- Building the gem from source now requires **Rust 1.94 or newer** (yrs 0.27.2
+  uses `let`-chains). The precompiled platform gems are unaffected -- they need
+  no Rust toolchain to install.
+
 ## [0.1.0.beta2] - 2026-06-16
 
 ### Added
@@ -54,6 +76,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Precompiled native gems for common platforms (no Rust toolchain needed to
   install) via the cross-gem workflow.
 
-[Unreleased]: https://github.com/jpcamara/yrb-lite/compare/v0.1.0.beta2...main
+[Unreleased]: https://github.com/jpcamara/yrb-lite/compare/v0.1.0.beta3...main
+[0.1.0.beta3]: https://github.com/jpcamara/yrb-lite/compare/v0.1.0.beta2...v0.1.0.beta3
 [0.1.0.beta2]: https://github.com/jpcamara/yrb-lite/compare/v0.1.0.beta1...v0.1.0.beta2
 [0.1.0.beta1]: https://github.com/jpcamara/yrb-lite/releases/tag/v0.1.0.beta1
