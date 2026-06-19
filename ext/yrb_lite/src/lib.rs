@@ -1,10 +1,10 @@
 use magnus::{function, method, prelude::*, Error, RString, Ruby, TryConvert, Value};
+use std::sync::Mutex;
 use yrs::encoding::read::{Cursor, Read};
 use yrs::sync::protocol::MessageReader;
 use yrs::sync::{Awareness, DefaultProtocol, Message, Protocol, SyncMessage};
 use yrs::updates::decoder::{Decode, DecoderV1};
 use yrs::updates::encoder::{Encode, Encoder, EncoderV1};
-use std::sync::Mutex;
 use yrs::{ClientID, Doc, ReadTxn, Transact};
 
 /// Wrapper around yrs Doc.
