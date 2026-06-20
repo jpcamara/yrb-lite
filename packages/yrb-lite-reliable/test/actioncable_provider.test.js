@@ -61,10 +61,26 @@ test("on connect: the SyncStep1 handshake goes via normal send, never whisper", 
   assert.equal(whisperedSync.length, 0, "no Sync frame is ever whispered (only awareness is)");
 });
 
-test("AnyCable: awareness frames are WHISPERED, document updates are SENT", (t) => {
+test("default: awareness is SENT (not whispered) even when whisper is available", (t) => {
+  // Whisper is opt-in: by default presence goes over a normal send the server
+  // relays, so it's never lost on a server that hasn't enabled whispering.
   const doc = new Y.Doc();
   const c = fakeConsumer({ withWhisper: true });
   const p = makeProvider(t, doc, c, { id: "r3" });
+  p.connect();
+  c.deliverConnected();
+
+  p.awareness.setLocalStateField("user", "alice");
+
+  const awarenessSends = c.calls.send.filter((m) => frameTypeOf(m.update) === MessageType.Awareness);
+  assert.ok(awarenessSends.length >= 1, "presence went through a normal send by default");
+  assert.equal(c.calls.whisper.length, 0, "nothing whispered without opting in");
+});
+
+test("awarenessWhisper:true — awareness is WHISPERED, document updates are SENT", (t) => {
+  const doc = new Y.Doc();
+  const c = fakeConsumer({ withWhisper: true });
+  const p = makeProvider(t, doc, c, { id: "r3b" }, { awarenessWhisper: true });
   p.connect();
   c.deliverConnected();
 
@@ -80,10 +96,10 @@ test("AnyCable: awareness frames are WHISPERED, document updates are SENT", (t) 
   assert.ok(awarenessWhispers.length >= 1, "the presence change was whispered");
 });
 
-test("plain ActionCable (no whisper): awareness falls back to normal send", (t) => {
+test("awarenessWhisper:true but no whisper method: falls back to normal send", (t) => {
   const doc = new Y.Doc();
   const c = fakeConsumer({ withWhisper: false });
-  const p = makeProvider(t, doc, c, { id: "r4" });
+  const p = makeProvider(t, doc, c, { id: "r4" }, { awarenessWhisper: true });
   p.connect();
   c.deliverConnected();
 

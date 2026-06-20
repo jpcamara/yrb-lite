@@ -9,9 +9,11 @@ Three layers, use whichever you need:
 
 - **`ActionCableProvider`** — a ready-made Yjs provider for ActionCable /
   AnyCable. Pass a `Y.Doc`, a cable consumer, and a channel; it wires the
-  subscription and you're collaborating. Awareness/presence is **whispered** over
-  AnyCable (client-to-client, no server round-trip) and falls back to a normal
-  send on plain ActionCable.
+  subscription and you're collaborating. Presence is delivered reliably by
+  default (the server relays it). Pass `awarenessWhisper: true` to instead use
+  AnyCable's `whisper` (client-to-client, no server round-trip) — but only once
+  you've enabled whispering server-side (`stream_from key, whisper: true`),
+  otherwise AnyCable silently drops it.
 - **`SyncEngine`** — the transport-agnostic core. Binds to a `Y.Doc` (+ optional
   `Awareness`) and owns the y-protocols **message encode/decode**, the
   **sync-step handshake** (SyncStep1 / SyncStep2 / Update), **awareness**, and
@@ -57,9 +59,9 @@ provider.connect(); // does not auto-connect — wire your editor binding first
 
 On the server, include `YrbLite::ActionCable::Sync` in a channel named
 `DocumentChannel` (the [`yrb-lite-actioncable`](https://rubygems.org/gems/yrb-lite-actioncable)
-gem). Awareness/presence is whispered over AnyCable when available and sent
-normally on plain ActionCable. Need different transport or framing? Drop down to
-`SyncEngine` and supply your own `send`.
+gem). Presence is server-relayed by default; opt into AnyCable whisper with
+`awarenessWhisper: true` (see above). Need different transport or framing? Drop
+down to `SyncEngine` and supply your own `send`.
 
 ## SyncEngine
 
