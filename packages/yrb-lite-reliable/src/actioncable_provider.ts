@@ -38,6 +38,16 @@ export interface ActionCableProviderOptions
   extends Pick<SyncEngineOptions, "reliable" | "resendInterval" | "maxUnconfirmedResends" | "onFallback"> {
   /** Awareness/presence instance. Defaults to a fresh `new Awareness(doc)`. */
   awareness?: Awareness | null;
+  /**
+   * Send awareness/presence frames over AnyCable's `whisper` (client-to-client,
+   * no server round-trip) instead of a normal send. **Off by default**: whisper
+   * is silently dropped unless the server has enabled it for the stream
+   * (`stream_from key, whisper: true` under AnyCable), so the safe default
+   * delivers presence via a normal send that the server relays -- works on plain
+   * ActionCable and AnyCable alike. Turn this on only when you've enabled
+   * whispering server-side.
+   */
+  awarenessWhisper?: boolean;
 }
 
 interface CableMessage {
@@ -53,6 +63,7 @@ export class ActionCableProvider {
   readonly channelParams: object;
   readonly awareness: Awareness;
   readonly engine: SyncEngine;
+  private awarenessWhisper: boolean;
   private subscription: CableSubscription | null = null;
 
   constructor(
@@ -67,6 +78,7 @@ export class ActionCableProvider {
     this.channelName = channelName;
     this.channelParams = channelParams;
     this.awareness = opts.awareness ?? new Awareness(doc);
+    this.awarenessWhisper = opts.awarenessWhisper ?? false;
 
     this.engine = new SyncEngine(doc, {
       awareness: this.awareness,
@@ -138,7 +150,10 @@ export class ActionCableProvider {
     const update = toBase64(frame);
     const payload = id === undefined ? { update } : { update, id };
     const isAwareness = opts?.awareness ?? frame[0] === MessageType.Awareness;
-    if (isAwareness && typeof sub.whisper === "function") sub.whisper(payload);
+    // Awareness goes over whisper only when explicitly opted in AND the transport
+    // supports it; otherwise a normal send (which the server relays) so presence
+    // is never silently lost on a server that hasn't enabled whispering.
+    if (isAwareness && this.awarenessWhisper && typeof sub.whisper === "function") sub.whisper(payload);
     else sub.send(payload);
   }
 }
