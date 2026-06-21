@@ -240,6 +240,48 @@ fn update_is_ready(doc: &Doc, update_bytes: &[u8]) -> Result<bool, String> {
     Ok(doc.transact().state_vector() >= update.state_vector_lower())
 }
 
+/// True if applying `update_bytes` would actually change `doc` -- i.e. it carries
+/// content the doc doesn't already have. Lets the server make durable side
+/// effects exactly-once: a lost-ack retry re-sends an update the server already
+/// applied; that retry is causally ready (so `update_is_ready` is true) but must
+/// NOT re-run `on_change`.
+///
+/// Inserts are decided exactly via the state vector: if the doc already covers
+/// every (client, clock) the update carries, the update is a duplicate and does
+/// not advance. Deletes do not move the state vector, so we can't cheaply prove a
+/// delete-bearing update is a duplicate -- we conservatively report it as
+/// advancing (record it). That can still double-record a pure-delete retry, but
+/// it NEVER drops a real deletion, which is the safe direction. Assumes the
+/// update is already causally ready (call `update_is_ready` first).
+fn update_advances_doc(doc: &Doc, update_bytes: &[u8]) -> Result<bool, String> {
+    let update = yrs::Update::decode_v1(update_bytes).map_err(|e| e.to_string())?;
+    if !update.delete_set().is_empty() {
+        return Ok(true); // can't cheaply prove a delete is a duplicate; record it
+    }
+    // We can't read the update's own state vector to decide this: yrs reports an
+    // EMPTY state_vector() for a causally-pending diff (e.g. a resync delta whose
+    // structs depend on updates the doc has but the standalone update doesn't),
+    // which would look identical to a no-op. So measure the real effect: seed an
+    // independent probe with the doc's current state, apply the update there, and
+    // see whether the state vector grew. (Deletes don't move the SV, hence the
+    // conservative early-return above.) The probe never touches the live doc.
+    let probe = Doc::new();
+    let current = doc
+        .transact()
+        .encode_state_as_update_v1(&yrs::StateVector::default());
+    probe
+        .transact_mut()
+        .apply_update(yrs::Update::decode_v1(&current).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    let before = probe.transact().state_vector();
+    probe
+        .transact_mut()
+        .apply_update(update)
+        .map_err(|e| e.to_string())?;
+    let after = probe.transact().state_vector();
+    Ok(after != before)
+}
+
 /// True if the doc holds pending structs or a pending delete set -- blocks that
 /// couldn't integrate because a dependency is missing. Used as a backstop after
 /// loading from storage: leftover pending means the stored log has a causal gap.
@@ -324,6 +366,15 @@ impl RbDoc {
         let update_bytes = copy_bytes(update);
         let doc = &self.0;
         nogvl(move || update_is_ready(doc, &update_bytes)).map_err(yrb_error)
+    }
+
+    /// True if applying `update` would change the document (it carries new
+    /// content), false if the doc already contains it (an already-applied
+    /// retry). See `update_advances_doc`. Pure read; does not mutate.
+    fn update_advances(&self, update: RString) -> Result<bool, Error> {
+        let update_bytes = copy_bytes(update);
+        let doc = &self.0;
+        nogvl(move || update_advances_doc(doc, &update_bytes)).map_err(yrb_error)
     }
 
     /// True if the document holds pending (un-integrable) structs waiting on a
@@ -610,6 +661,18 @@ impl RbAwareness {
         .map_err(yrb_error)
     }
 
+    /// True if applying `update` would change the document, false if it's an
+    /// already-applied retry. See `update_advances_doc`. Pure read.
+    fn update_advances(&self, update: RString) -> Result<bool, Error> {
+        let update_bytes = copy_bytes(update);
+        let awareness = &self.0;
+        nogvl(move || {
+            let doc = awareness.lock().unwrap().doc().clone();
+            update_advances_doc(&doc, &update_bytes)
+        })
+        .map_err(yrb_error)
+    }
+
     /// True if the document holds pending (un-integrable) structs waiting on a
     /// missing dependency.
     fn pending(&self) -> bool {
@@ -713,6 +776,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     )?;
     doc_class.define_method("apply_update", method!(RbDoc::apply_update, 1))?;
     doc_class.define_method("update_ready?", method!(RbDoc::update_ready, 1))?;
+    doc_class.define_method("update_advances?", method!(RbDoc::update_advances, 1))?;
     doc_class.define_method("pending?", method!(RbDoc::pending, 0))?;
     doc_class.define_method("sync_step1", method!(RbDoc::sync_step1, 0))?;
     doc_class.define_method("sync_step2", method!(RbDoc::sync_step2, 1))?;
@@ -744,6 +808,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     )?;
     awareness_class.define_method("apply_update", method!(RbAwareness::apply_update, 1))?;
     awareness_class.define_method("update_ready?", method!(RbAwareness::update_ready, 1))?;
+    awareness_class.define_method("update_advances?", method!(RbAwareness::update_advances, 1))?;
     awareness_class.define_method("pending?", method!(RbAwareness::pending, 0))?;
     awareness_class.define_method("set_local_state", method!(RbAwareness::set_local_state, 1))?;
     awareness_class.define_method("local_state", method!(RbAwareness::local_state, 0))?;
@@ -838,6 +903,70 @@ mod tests {
 
         let frame = update_frame("hello");
         assert_eq!(classify_message(&frame[..frame.len() / 2]), 0, "truncated");
+    }
+
+    #[test]
+    fn update_advances_is_false_for_an_already_applied_retry() {
+        let doc = Doc::new();
+        let upd = text_update("hello");
+
+        // Against a doc that doesn't have it yet, the update advances.
+        assert!(
+            update_advances_doc(&doc, &upd).unwrap(),
+            "new content advances"
+        );
+
+        // Apply it, then the byte-identical retry no longer advances.
+        doc.transact_mut()
+            .apply_update(yrs::Update::decode_v1(&upd).unwrap())
+            .unwrap();
+        assert!(
+            !update_advances_doc(&doc, &upd).unwrap(),
+            "an already-applied retry does not advance"
+        );
+
+        // A genuinely new insert (from a different client) still advances.
+        let more = text_update("world");
+        assert!(
+            update_advances_doc(&doc, &more).unwrap(),
+            "different new content advances"
+        );
+    }
+
+    #[test]
+    fn update_advances_handles_a_dependent_diff_update() {
+        // A causally-pending diff (its structs depend on content the doc already
+        // has) reports an EMPTY state_vector() in isolation -- a naive check would
+        // misread it as a no-op. Verify the trial-apply gets it right.
+        let doc = Doc::new();
+        let text = doc.get_or_insert_text("content");
+        text.insert(&mut doc.transact_mut(), 0, "a");
+        let a_update = doc
+            .transact()
+            .encode_state_as_update_v1(&yrs::StateVector::default());
+        let sv_a = doc.transact().state_vector();
+        text.insert(&mut doc.transact_mut(), 1, "b");
+        let diff = doc.transact().encode_state_as_update_v1(&sv_a); // depends on "a"
+
+        // A server that has only "a".
+        let server = Doc::new();
+        server
+            .transact_mut()
+            .apply_update(yrs::Update::decode_v1(&a_update).unwrap())
+            .unwrap();
+
+        assert!(
+            update_advances_doc(&server, &diff).unwrap(),
+            "a dependent diff carrying new content advances"
+        );
+        server
+            .transact_mut()
+            .apply_update(yrs::Update::decode_v1(&diff).unwrap())
+            .unwrap();
+        assert!(
+            !update_advances_doc(&server, &diff).unwrap(),
+            "the byte-identical retry of that diff does not advance"
+        );
     }
 
     #[test]

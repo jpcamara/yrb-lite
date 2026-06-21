@@ -602,7 +602,11 @@ class SyncTest < Minitest::Test
     threads.each(&:join)
 
     refute overlapped, "recorder must never run concurrently for one document"
-    assert_equal 24, log.length, "every change is recorded exactly once"
+    # 24 concurrent deliveries cycle over only 4 DISTINCT updates (frames[i % 4]).
+    # Byte-identical deliveries are the same CRDT change, so each is recorded
+    # exactly once and the duplicates are deduped -- exactly-once side effects,
+    # even under concurrency.
+    assert_equal frames.length, log.length, "each distinct change is recorded exactly once"
 
     # The authoritative document is exactly the in-order replay of the log.
     replay = YrbLite::Doc.new
@@ -721,5 +725,51 @@ class SyncTest < Minitest::Test
     assert_equal 0, result[0] # MSG_SYNC
     assert_equal 0, result[1] # Responding to STEP1
     assert_kind_of String, result[2] # Response bytes (SyncStep2)
+  end
+
+  # --- Exactly-once durable side effects (lost-ack retry) -----------------
+
+  def test_authoritative_retry_acks_without_double_recording
+    key = "exactly-once-room"
+    broadcasts = []
+    recorded = []
+    acks = []
+    helper = authoritative_helper(key, broadcasts: broadcasts) { |_k, u| recorded << u }
+    helper.define_singleton_method(:transmit) { |data| acks << data }
+
+    frame = YrbLite::Awareness.new.encode_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
+    msg = { "m" => Base64.strict_encode64(frame), "id" => 7 }
+
+    helper.sync_receive(msg) # first delivery: record + relay + ack
+    helper.sync_receive(msg) # lost-ack retry: byte-identical
+
+    assert_equal 1, recorded.length, "the retry is NOT recorded again"
+    assert_equal 1, broadcasts.length, "the retry is NOT rebroadcast"
+    assert_equal [{ "ack" => 7 }, { "ack" => 7 }], acks,
+                 "both the original and the retry are acked, so the client stops retransmitting"
+  end
+
+  def test_store_backed_retry_acks_without_double_recording
+    recorded = []
+    broadcasts = []
+    acks = []
+    store = YrbLite::Doc.new
+    loader = ->(_k) { store.encode_state_as_update }
+    recorder = lambda do |_k, update|
+      recorded << update
+      store.apply_update(update) # the "store" now contains the change
+    end
+    helper = store_backed_helper(loader: loader, recorder: recorder, transmits: acks, broadcasts: broadcasts)
+
+    frame = YrbLite::Awareness.new.encode_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
+    msg = { "update" => Base64.strict_encode64(frame), "id" => 5 }
+
+    helper.sync_receive(msg, "doc-key") # record + relay + ack
+    helper.sync_receive(msg, "doc-key") # retry: already in the store
+
+    assert_equal 1, recorded.length, "the retry is NOT recorded again"
+    assert_equal 1, broadcasts.length, "the retry is NOT rebroadcast"
+    assert_equal [{ "ack" => 5 }, { "ack" => 5 }], acks,
+                 "both the original and the retry are acked"
   end
 end
