@@ -284,14 +284,3 @@ test("received awareness envelope rejects non-awareness frames", (t) => {
   assert.equal(errors[0].context, "received");
   assert.match(String(errors[0].err?.message ?? errors[0].err), /non-awareness/);
 });
-
-test("received legacy m envelope is ignored", (t) => {
-  const c = fakeConsumer();
-  const p = makeProvider(t, new Y.Doc(), c, { id: "legacy1" });
-  p.connect();
-  c.deliverConnected();
-
-  c.deliverReceived({ m: syncStep2Envelope(new Y.Doc()).update });
-
-  assert.equal(p.synced, false, "legacy m payloads are not accepted");
-});

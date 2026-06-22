@@ -1,6 +1,6 @@
 // In-depth multi-browser concurrent test. Drives real Chrome windows (via
-// Playwright) running the actual demo: Tiptap editor plus the @y-rb/actioncable
-// provider over @rails/actioncable. Each browser context is an isolated user.
+// Playwright) running the actual demo: Tiptap editor plus yrb-lite-client over
+// @rails/actioncable. Each browser context is an isolated user.
 // This exercises the full client stack a real person uses, rather than a
 // headless raw-WebSocket simulation.
 //

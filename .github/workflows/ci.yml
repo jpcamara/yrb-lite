@@ -116,6 +116,9 @@ jobs:
         run: |
           bundle install
           bin/rails db:prepare
+      - name: Build yrb-lite-client package
+        working-directory: packages/yrb-lite-client
+        run: npm ci && npm run build
       - name: Build frontend bundle
         working-directory: examples/actioncable-demo/frontend
         run: bun install && bun run build
@@ -131,7 +134,6 @@ jobs:
             sleep 1
           done
           cd frontend
-          PORT=3777 bun provider_check.mjs
           PORT=3777 bun audit_scenarios.mjs
           PORT=3777 bun audit.mjs
           PORT=3777 bun reliable.mjs

@@ -59,7 +59,7 @@ class TestClient {
       case "disconnect":
         return
     }
-    if (msg.message?.m) this.receiveBinary(fromBase64(msg.message.m))
+    if (msg.message?.update) this.receiveBinary(fromBase64(msg.message.update))
   }
 
   receiveBinary(bytes) {
@@ -88,7 +88,7 @@ class TestClient {
       JSON.stringify({
         command: "message",
         identifier: this.identifier,
-        data: JSON.stringify({ m: toBase64(encoding.toUint8Array(encoder)) }),
+        data: JSON.stringify({ update: toBase64(encoding.toUint8Array(encoder)) }),
       })
     )
   }

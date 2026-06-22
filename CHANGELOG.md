@@ -94,13 +94,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   with an `"id"`; the server replies `{ "ack": <id> }` once the update has been
   accepted (recorded in audit mode, applied in fast mode). This lets an
   ack-aware client retain and retransmit an update until delivery is confirmed,
-  so an edit can't be silently lost on a flaky connection. Stock clients send no
-  `"id"`, never get acks, and behave exactly as before.
-- A vendored, ack-aware `@y-rb/actioncable` provider in the demo
-  (`reliable_actioncable_provider.mjs`) that adds reliable delivery with
-  "sync-since-last-ack" framing (the unacknowledged tail is sent as one merged,
-  causally-complete delta), plus a minimal reference client and an intensive
-  message-loss stress test.
+  so an edit can't be silently lost on a flaky connection. Clients that omit
+  `"id"` are still accepted, but their delivery is not ack-tracked.
+- Demo coverage for reliable delivery with "sync-since-last-ack" framing (the
+  unacknowledged tail is sent as one merged, causally-complete delta), plus a
+  minimal reference client and an intensive message-loss stress test.
 
 ### Fixed
 
@@ -120,9 +118,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   native extension). The GVL is released during CRDT work so docs can run in
   parallel on MRI.
 - `YrbLite::Sync` ActionCable channel concern implementing the y-websocket
-  protocol (document sync plus awareness/presence). It's wire-compatible with
-  the [`@y-rb/actioncable`](https://www.npmjs.com/package/@y-rb/actioncable)
-  browser provider, and accepts its `{ update: ... }` envelope and `{ m: ... }`.
+  protocol (document sync plus awareness/presence).
 - A "record-before-distribute" mode via an `on_change` hook, so every change is
   recorded durably before it's applied or relayed.
 - Presence cleanup on disconnect, and idle-document eviction.

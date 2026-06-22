@@ -74,7 +74,7 @@ class ReliableClient {
       this.acked.push(msg.message.ack)
       return
     }
-    if (msg.message?.m) this.receiveBinary(fromBase64(msg.message.m))
+    if (msg.message?.update) this.receiveBinary(fromBase64(msg.message.update))
   }
 
   receiveBinary(bytes) {
@@ -116,7 +116,7 @@ class ReliableClient {
       JSON.stringify({
         command: "message",
         identifier: this.identifier,
-        data: JSON.stringify({ m: toBase64(frameBytes), id }),
+        data: JSON.stringify({ update: toBase64(frameBytes), id }),
       })
     )
   }
@@ -127,7 +127,7 @@ class ReliableClient {
       JSON.stringify({
         command: "message",
         identifier: this.identifier,
-        data: JSON.stringify({ m: toBase64(frameBytes) }),
+        data: JSON.stringify({ update: toBase64(frameBytes) }),
       })
     )
   }

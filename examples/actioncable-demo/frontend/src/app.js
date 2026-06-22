@@ -1,6 +1,6 @@
 import * as Y from "yjs"
 import { createConsumer } from "@rails/actioncable"
-import { ReliableActionCableProvider } from "../provider/reliable_actioncable_provider.mjs"
+import { ActionCableProvider } from "yrb-lite-client"
 import { Editor } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Collaboration from "@tiptap/extension-collaboration"
@@ -18,15 +18,10 @@ const user = {
   color: COLORS[Math.floor(Math.random() * COLORS.length)],
 }
 
-// The reliable provider is the standard @y-rb/actioncable WebsocketProvider
-// (wire-compatible with yrb-lite's server: the `{ update: ... }` envelope, one
-// protocol message per frame) augmented with ack-based delivery. It tags each
-// batch with an id, retains the unacked tail, and retransmits until the server
-// acks -- so an edit can't be silently lost on a flaky connection. Pass
-// `reliable: false` to fall back to the stock provider behavior.
 const ydoc = new Y.Doc()
 const consumer = createConsumer()
-const provider = new ReliableActionCableProvider(ydoc, consumer, "DocumentChannel", { id: documentId })
+const provider = new ActionCableProvider(ydoc, consumer, "DocumentChannel", { id: documentId })
+provider.connect()
 
 statusEl.dataset.state = "connecting"
 statusEl.textContent = `connecting as ${user.name}…`

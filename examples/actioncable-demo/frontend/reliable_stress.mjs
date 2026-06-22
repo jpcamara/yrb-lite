@@ -25,7 +25,7 @@
 // Inbound broadcasts are left intact -- recovering those is the server-resync
 // concern, not this layer's.
 import * as Y from "yjs"
-import { ReliableActionCableProvider } from "./provider/reliable_actioncable_provider.mjs"
+import { ActionCableProvider } from "yrb-lite-client"
 import { serverText } from "./server_read.mjs"
 
 const PORT = process.env.PORT || 3777
@@ -100,6 +100,9 @@ function lossyConsumer(url) {
         if (welcomed && ws.readyState === WebSocket.OPEN) subscribe(sub)
         return sub
       },
+      remove(sub) {
+        sub.unsubscribe()
+      },
     },
   }
 }
@@ -130,11 +133,12 @@ console.log(
 )
 
 // --- Connect ----------------------------------------------------------------
-const opts = { disableBc: true, resendInterval: 100 }
+const opts = { resendInterval: 100 }
 const clients = Array.from({ length: CLIENTS }, () => {
   const doc = new Y.Doc()
   const consumer = lossyConsumer(URL)
-  const provider = new ReliableActionCableProvider(doc, consumer, "DocumentChannel", { id: ROOM }, opts)
+  const provider = new ActionCableProvider(doc, consumer, "DocumentChannel", { id: ROOM }, opts)
+  provider.connect()
   return { doc, consumer, provider }
 })
 
@@ -160,12 +164,10 @@ const outageStorm = (async () => {
 })()
 
 // Every client fires its edits concurrently, with small jittered gaps.
-let maxPending = 0
-const editors = clients.map(({ doc, provider }, i) =>
+const editors = clients.map(({ doc }, i) =>
   (async () => {
     for (let n = 0; n < EDITS; n++) {
       addEdit(doc, `c${i}-${n}`)
-      maxPending = Math.max(maxPending, provider.pending.length)
       await sleep(rand(3, 18))
     }
   })()
@@ -183,10 +185,8 @@ for (const c of clients) {
   c.consumer.state.blackhole = false
 }
 
-await waitFor("every client's pending queue drains (all edits acked)", () =>
-  clients.every((c) => c.provider.pending.length === 0)
-)
-check("all pending queues drained", clients.every((c) => c.provider.pending.length === 0))
+await waitFor("every client's pending queue drains (all edits acked)", () => clients.every((c) => !c.provider.hasPending))
+check("all pending queues drained", clients.every((c) => !c.provider.hasPending))
 
 const expected = new Set()
 for (let i = 0; i < CLIENTS; i++) for (let n = 0; n < EDITS; n++) expected.add(`c${i}-${n}`)
@@ -224,10 +224,7 @@ const totalDroppedAck = clients.reduce((s, c) => s + c.consumer.state.droppedAck
 const totalSent = clients.reduce((s, c) => s + c.consumer.state.sent, 0)
 check("loss was actually exercised (outbound frames dropped)", totalDroppedOut > TOTAL * 0.1)
 check("ack loss was actually exercised", totalDroppedAck > 0)
-console.log(
-  `\nstats: sent=${totalSent} droppedOut=${totalDroppedOut} droppedAck=${totalDroppedAck} ` +
-    `maxPendingDepth=${maxPending}`
-)
+console.log(`\nstats: sent=${totalSent} droppedOut=${totalDroppedOut} droppedAck=${totalDroppedAck}`)
 
 for (const c of clients) c.provider.destroy()
 console.log("")

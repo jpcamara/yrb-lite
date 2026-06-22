@@ -70,8 +70,8 @@ class Client {
       syncProtocol.writeSyncStep1(enc, this.doc)
       this._send(enc)
       this._onSubscribed()
-    } else if (msg.message?.m) {
-      const decoder = decoding.createDecoder(fromBase64(msg.message.m))
+    } else if (msg.message?.update) {
+      const decoder = decoding.createDecoder(fromBase64(msg.message.update))
       while (decoding.hasContent(decoder)) {
         if (decoding.readVarUint(decoder) === MSG_SYNC) {
           const enc = encoding.createEncoder()
@@ -92,7 +92,7 @@ class Client {
       JSON.stringify({
         command: "message",
         identifier: this.identifier,
-        data: JSON.stringify({ m: toBase64(encoding.toUint8Array(encoder)) }),
+        data: JSON.stringify({ update: toBase64(encoding.toUint8Array(encoder)) }),
       })
     )
   }

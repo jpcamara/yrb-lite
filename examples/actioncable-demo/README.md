@@ -5,7 +5,7 @@ server. The Y.js sync protocol and awareness (shared cursors and presence) run
 natively in Ruby through [yrb-lite](../..).
 
 ```
-Browser (Tiptap + Yjs provider) ⇄ ActionCable ⇄ DocumentChannel (YrbLite::ActionCable::Sync)
+Browser (Tiptap + Yjs + yrb-lite-client) ⇄ ActionCable ⇄ DocumentChannel (YrbLite::ActionCable::Sync)
 ```
 
 The server can read the document too. `GET /docs/:id/content` returns the live
@@ -17,6 +17,9 @@ sees.
 
 ```bash
 bundle install
+
+# Build the local client package used by the demo
+cd ../../packages/yrb-lite-client && npm install && npm run build && cd ../../examples/actioncable-demo
 
 # Build the frontend bundle (requires bun)
 cd frontend && bun install && bun run build && cd ..
@@ -48,18 +51,17 @@ document key. ActionCable's worker threads call into it concurrently, which is
 safe because yrb-lite's native types are `Send + Sync` and release the GVL
 during CRDT work. Add `on_load`/`on_save` callbacks to persist documents.
 
-The browser side uses the provider in
-[`frontend/provider/reliable_actioncable_provider.mjs`](frontend/provider/reliable_actioncable_provider.mjs).
-Tiptap's Collaboration and CollaborationCursor extensions plug into the
-provider's shared `Y.Doc` and `Awareness` directly. Document frames use the
-canonical `{ update, id }` envelope and are ack-tracked; awareness frames are
-ephemeral.
+The browser side uses `yrb-lite-client`'s `ActionCableProvider`. Tiptap's
+Collaboration and CollaborationCursor extensions plug into the provider's shared
+`Y.Doc` and `Awareness` directly. Document frames use the canonical
+`{ update, id }` envelope and are ack-tracked; awareness frames are ephemeral.
 
 ```js
 import { createConsumer } from "@rails/actioncable"
-import { ReliableActionCableProvider } from "./provider/reliable_actioncable_provider.mjs"
+import { ActionCableProvider } from "yrb-lite-client"
 
-const provider = new ReliableActionCableProvider(ydoc, createConsumer(), "DocumentChannel", { id: documentId })
+const provider = new ActionCableProvider(ydoc, createConsumer(), "DocumentChannel", { id: documentId })
+provider.connect()
 ```
 
 ## End-to-end test

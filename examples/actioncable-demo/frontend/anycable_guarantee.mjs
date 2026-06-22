@@ -42,8 +42,8 @@ class Client {
       const enc = encoding.createEncoder()
       encoding.writeVarUint(enc, MSG_SYNC); syncProtocol.writeSyncStep1(enc, this.doc)
       this._send(enc); this._sub()
-    } else if (m.message?.update || m.message?.m) {
-      const d = decoding.createDecoder(fromB64(m.message.update || m.message.m))
+    } else if (m.message?.update) {
+      const d = decoding.createDecoder(fromB64(m.message.update))
       while (decoding.hasContent(d)) {
         if (decoding.readVarUint(d) === MSG_SYNC) {
           const enc = encoding.createEncoder(); encoding.writeVarUint(enc, MSG_SYNC)

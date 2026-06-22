@@ -55,8 +55,8 @@ class Client {
       syncProtocol.writeSyncStep1(enc, this.doc)
       this.send(enc)
       this._sub()
-    } else if (m.message?.m) {
-      const d = decoding.createDecoder(fromBase64(m.message.m))
+    } else if (m.message?.update) {
+      const d = decoding.createDecoder(fromBase64(m.message.update))
       while (decoding.hasContent(d)) {
         if (decoding.readVarUint(d) === MSG_SYNC) {
           const enc = encoding.createEncoder()
@@ -74,7 +74,7 @@ class Client {
     this.ws.send(JSON.stringify({
       command: "message",
       identifier: this.identifier,
-      data: JSON.stringify({ m: toBase64(encoding.toUint8Array(enc)) }),
+      data: JSON.stringify({ update: toBase64(encoding.toUint8Array(enc)) }),
     }))
   }
   edit(text) {
@@ -117,17 +117,17 @@ class Vandal {
     const validBytes = encoding.toUint8Array(valid)
     return [
       "not json at all {{{",                          // broken envelope
-      JSON.stringify({ x: 1 }),                        // no "m"
-      JSON.stringify({ m: 12345 }),                    // m not a string
-      JSON.stringify({ m: "!!!not-base64!!!" }),       // not base64
-      JSON.stringify({ m: toBase64(randBytes(4)) }),   // random bytes
-      JSON.stringify({ m: toBase64(randBytes(64)) }),
-      JSON.stringify({ m: toBase64(randBytes(4096)) }),
-      JSON.stringify({ m: toBase64(randBytes(200_000)) }), // oversized
-      JSON.stringify({ m: toBase64(new Uint8Array([0x63, 0x63, 0x63])) }), // unknown type
-      JSON.stringify({ m: toBase64(new Uint8Array([0x00, 0x01, 0xff, 0xff, 0xff, 0xff, 0x0f])) }), // bogus length
-      JSON.stringify({ m: toBase64(new Uint8Array([0x01, 0xff, 0xff, 0xff, 0xff, 0x0f])) }), // bad awareness
-      JSON.stringify({ m: toBase64(validBytes.slice(0, validBytes.length - 1)) }), // truncated valid
+      JSON.stringify({ x: 1 }),                        // no update
+      JSON.stringify({ update: 12345 }),                    // update not a string
+      JSON.stringify({ update: "!!!not-base64!!!" }),       // not base64
+      JSON.stringify({ update: toBase64(randBytes(4)) }),   // random bytes
+      JSON.stringify({ update: toBase64(randBytes(64)) }),
+      JSON.stringify({ update: toBase64(randBytes(4096)) }),
+      JSON.stringify({ update: toBase64(randBytes(200_000)) }), // oversized
+      JSON.stringify({ update: toBase64(new Uint8Array([0x63, 0x63, 0x63])) }), // unknown type
+      JSON.stringify({ update: toBase64(new Uint8Array([0x00, 0x01, 0xff, 0xff, 0xff, 0xff, 0x0f])) }), // bogus length
+      JSON.stringify({ update: toBase64(new Uint8Array([0x01, 0xff, 0xff, 0xff, 0xff, 0x0f])) }), // bad awareness
+      JSON.stringify({ update: toBase64(validBytes.slice(0, validBytes.length - 1)) }), // truncated valid
     ]
   }
   async barrage(rounds) {

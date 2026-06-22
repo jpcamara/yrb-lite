@@ -59,8 +59,8 @@ class Client {
       syncProtocol.writeSyncStep1(enc, this.doc)
       this._send(enc)
       this._sub()
-    } else if (m.message?.m) {
-      const d = decoding.createDecoder(fromB64(m.message.m))
+    } else if (m.message?.update) {
+      const d = decoding.createDecoder(fromB64(m.message.update))
       while (decoding.hasContent(d)) {
         const type = decoding.readVarUint(d)
         if (type === MSG_SYNC) {
@@ -80,7 +80,7 @@ class Client {
     this.ws.send(JSON.stringify({
       command: "message",
       identifier: this.identifier,
-      data: JSON.stringify({ m: toB64(encoding.toUint8Array(enc)) }),
+      data: JSON.stringify({ update: toB64(encoding.toUint8Array(enc)) }),
     }))
   }
   edit(text) {

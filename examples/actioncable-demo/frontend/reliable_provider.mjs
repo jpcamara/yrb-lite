@@ -1,8 +1,8 @@
-// Drives the vendored ReliableActionCableProvider against the yrb-lite server,
+// Drives yrb-lite-client's ActionCableProvider against the yrb-lite server,
 // headless. Two checks:
 //
-//   1. Compatibility: two reliable providers sync documents + presence exactly
-//      like the stock @y-rb/actioncable provider does.
+//   1. Two providers sync documents + presence through the canonical yrb-lite
+//      envelopes.
 //   2. Reliability: a silently-lost client->server batch is recovered by the
 //      provider's own retransmit -- no reconnect, no follow-up edit -- and the
 //      ack drains its pending queue.
@@ -10,13 +10,12 @@
 //   bin/rails s -p 3777        (AUDIT=1 also works)
 //   cd frontend && bun reliable_provider.mjs
 //
-// Like provider_check.mjs, we hand the provider a minimal raw-WebSocket
-// ActionCable consumer (the browser transport doesn't deliver inbound messages
-// headless). The consumer has a `blackhole` switch that drops outbound frames
-// without tearing down the socket -- a lost-in-transit network, not a
-// disconnect -- so the provider keeps retransmitting on its timer.
+// We hand the provider a minimal raw-WebSocket ActionCable consumer. The
+// consumer has a `blackhole` switch that drops outbound frames without tearing
+// down the socket -- a lost-in-transit network, not a disconnect -- so the
+// provider keeps retransmitting on its timer.
 import * as Y from "yjs"
-import { ReliableActionCableProvider } from "./provider/reliable_actioncable_provider.mjs"
+import { ActionCableProvider } from "yrb-lite-client"
 
 const PORT = process.env.PORT || 3777
 const ROOM = `relprov-${process.pid}`
@@ -66,6 +65,9 @@ function rawConsumer(url) {
         if (welcomed && ws.readyState === WebSocket.OPEN) subscribe(sub)
         return sub
       },
+      remove(sub) {
+        sub.unsubscribe()
+      },
     },
   }
 }
@@ -106,12 +108,14 @@ const addParagraph = (doc, t) => {
 }
 const text = (doc) => doc.getXmlFragment("default").toString()
 
-const opts = { disableBc: true, resendInterval: 150 }
+const opts = { resendInterval: 150 }
 const doc1 = new Y.Doc()
 const doc2 = new Y.Doc()
 const c1 = rawConsumer(URL)
-const p1 = new ReliableActionCableProvider(doc1, c1, "DocumentChannel", { id: ROOM }, opts)
-const p2 = new ReliableActionCableProvider(doc2, rawConsumer(URL), "DocumentChannel", { id: ROOM }, opts)
+const p1 = new ActionCableProvider(doc1, c1, "DocumentChannel", { id: ROOM }, opts)
+const p2 = new ActionCableProvider(doc2, rawConsumer(URL), "DocumentChannel", { id: ROOM }, opts)
+p1.connect()
+p2.connect()
 
 await waitFor("both providers report synced", () => p1.synced && p2.synced)
 check("both providers synced with the server", p1.synced && p2.synced)
@@ -119,8 +123,8 @@ check("both providers synced with the server", p1.synced && p2.synced)
 // 1. Normal edit: propagates, gets acked, drains p1's pending queue.
 addParagraph(doc1, "alpha")
 await waitFor("p2 receives alpha", () => text(doc2).includes("alpha"))
-await waitFor("p1's queue drains (alpha acked)", () => p1.pending.length === 0)
-check("normal edit acked and propagated", text(doc2).includes("alpha") && p1.everAcked)
+await waitFor("p1's queue drains (alpha acked)", () => !p1.hasPending)
+check("normal edit acked and propagated", text(doc2).includes("alpha") && !p1.hasPending)
 
 // 2. Network blackhole: p1's next batch (and every retransmit) is dropped before
 //    reaching the server. Nothing else is sent, so the server stays idle and
@@ -132,15 +136,15 @@ const absent = await stayFalse("beta-lost stays off p2 during the outage", () =>
   text(doc2).includes("beta-lost")
 )
 check("lost edit did not reach p2 during the outage", absent)
-check("p1 still has the edit queued (unacked)", p1.pending.length > 0)
+check("p1 still has the edit queued (unacked)", p1.hasPending)
 check("the provider kept retransmitting (and failing)", c1.state.dropped >= 2)
 
 // 3. Connectivity returns: the next retransmit lands, the server acks, and the
 //    edit propagates. Recovery is driven purely by the provider's retransmit.
 c1.state.blackhole = false
-await waitFor("p1's queue drains once connectivity returns", () => p1.pending.length === 0)
+await waitFor("p1's queue drains once connectivity returns", () => !p1.hasPending)
 await waitFor("p2 receives the recovered beta-lost", () => text(doc2).includes("beta-lost"))
-check("retransmit recovered the lost edit", text(doc2).includes("beta-lost") && p1.pending.length === 0)
+check("retransmit recovered the lost edit", text(doc2).includes("beta-lost") && !p1.hasPending)
 
 // Presence still flows, and the docs converge byte-for-byte.
 p1.awareness.setLocalState({ user: { name: "P-ONE" } })

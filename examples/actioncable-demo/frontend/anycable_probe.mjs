@@ -57,8 +57,8 @@ class Client {
     } else if (m.type === "reject_subscription") {
       console.log(`  [${this.name}] subscription REJECTED`)
       this._sub()
-    } else if (m.message?.m || m.message?.update) {
-      const raw = m.message.m || m.message.update
+    } else if (m.message?.update) {
+      const raw = m.message.update
       // did this frame carry one of our own local updates?
       const d = decoding.createDecoder(fromB64(raw))
       while (decoding.hasContent(d)) {

@@ -70,9 +70,9 @@ class LoadClient {
       const e = encoding.createEncoder()
       encoding.writeVarUint(e, MSG_SYNC); syncProtocol.writeSyncStep1(e, this.doc)
       this._send(e); this._sub()
-    } else if (m.message?.update || m.message?.m) {
+    } else if (m.message?.update) {
       metrics.recv++
-      const d = decoding.createDecoder(fromB64(m.message.update || m.message.m))
+      const d = decoding.createDecoder(fromB64(m.message.update))
       while (decoding.hasContent(d)) {
         if (decoding.readVarUint(d) === MSG_SYNC) {
           const e = encoding.createEncoder(); encoding.writeVarUint(e, MSG_SYNC)

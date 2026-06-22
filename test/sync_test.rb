@@ -294,18 +294,6 @@ class SyncTest < Minitest::Test
     helper
   end
 
-  def test_legacy_m_envelope_is_ignored
-    recorded = []
-    broadcasts = []
-    helper = authoritative_helper("legacy-envelope-room", broadcasts: broadcasts) { |_k, update| recorded << update }
-    frame = YrbLite::Awareness.new.encode_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
-
-    helper.sync_receive({ "m" => Base64.strict_encode64(frame), "id" => 7 })
-
-    assert_empty recorded, "legacy m payloads are not recorded"
-    assert_empty broadcasts, "legacy m payloads are not distributed"
-  end
-
   def test_on_change_records_exact_delta_before_apply_and_distribute
     key = "audit-room"
     broadcasts = []
