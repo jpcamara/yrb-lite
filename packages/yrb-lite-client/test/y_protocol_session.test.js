@@ -69,14 +69,6 @@ test("an ack drains the pending queue", () => {
   assert.equal(eng.hasPending, false);
 });
 
-test("reliable:false sends fire-and-forget (no id, nothing pending)", () => {
-  const { doc, eng, sent } = engine({ reliable: false });
-  eng.onConnect();
-  doc.getText("t").insert(0, "hi");
-  assert.equal(sent.at(-1).id, undefined);
-  assert.equal(eng.hasPending, false);
-});
-
 test("receive(SyncStep1) replies with a SyncStep2; receive(Update) applies to the doc", () => {
   const { doc, eng } = engine();
   // A peer that already has content sends us its SyncStep1...
@@ -113,30 +105,25 @@ test("synced flips true after a SyncStep2 arrives", () => {
 });
 
 test("two engines converge end-to-end through a relay", () => {
-  // reliable:false so updates flow immediately with no server to ack them.
   const docA = new Y.Doc();
   const docB = new Y.Doc();
   let a, b;
-  const relay = (target) => (frame) => {
-    const reply = target.receive(frame);
-    // reply (e.g. SyncStep2) goes back to the sender's peer as well
-    return reply;
-  };
   a = new YProtocolSession(docA, {
-    reliable: false,
-    send: (frame) => {
+    ...noTimers,
+    send: (frame, id) => {
       const reply = b.receive(frame);
+      if (id !== undefined) a.ack(id);
       if (reply) a.receive(reply);
     },
   });
   b = new YProtocolSession(docB, {
-    reliable: false,
-    send: (frame) => {
+    ...noTimers,
+    send: (frame, id) => {
       const reply = a.receive(frame);
+      if (id !== undefined) b.ack(id);
       if (reply) b.receive(reply);
     },
   });
-  void relay;
 
   a.onConnect();
   b.onConnect();
@@ -146,6 +133,8 @@ test("two engines converge end-to-end through a relay", () => {
   assert.equal(docA.getText("t").toString(), docB.getText("t").toString(), "docs converge byte-for-byte");
   assert.ok(docA.getText("t").toString().includes("from A"));
   assert.ok(docA.getText("t").toString().includes("from B"));
+  a.destroy();
+  b.destroy();
 });
 
 test("awareness frames are flagged { awareness: true } on the send callback; doc frames are not", () => {
@@ -252,6 +241,50 @@ test("receive: trailing bytes after a complete message are rejected via onError"
   assert.equal(reply, null, "a frame with trailing bytes yields no reply");
   assert.ok(errors.includes("receive"), "trailing bytes reported via onError");
   eng.destroy();
+});
+
+test("receive: a padded sync update is rejected before mutating the doc", () => {
+  const errors = [];
+  const { doc, eng } = engine({ onError: (_e, c) => errors.push(c) });
+  const peer = new Y.Doc();
+  peer.getText("t").insert(0, "should not apply");
+  const good = updateFrame(Y.encodeStateAsUpdate(peer));
+  const padded = new Uint8Array(good.length + 1);
+  padded.set(good, 0);
+  padded[good.length] = 0xff;
+
+  const reply = eng.receive(padded);
+
+  assert.equal(reply, null, "malformed update yields no reply");
+  assert.equal(doc.getText("t").toString(), "", "the valid prefix was not applied");
+  assert.ok(errors.includes("receive"), "trailing bytes reported via onError");
+  eng.destroy();
+});
+
+test("receive: a padded awareness update is rejected before mutating awareness", () => {
+  const errors = [];
+  const docA = new Y.Doc();
+  const awA = new Awareness(docA);
+  awA.setLocalStateField("user", "alice");
+  const docB = new Y.Doc();
+  const awB = new Awareness(docB);
+  const engB = new YProtocolSession(docB, { awareness: awB, ...noTimers, send: () => {}, onError: (_e, c) => errors.push(c) });
+  const e = encoding.createEncoder();
+  encoding.writeVarUint(e, MSG.Awareness);
+  encoding.writeVarUint8Array(e, encodeAwarenessUpdate(awA, [docA.clientID]));
+  const good = encoding.toUint8Array(e);
+  const padded = new Uint8Array(good.length + 1);
+  padded.set(good, 0);
+  padded[good.length] = 0xff;
+
+  const reply = engB.receive(padded);
+
+  assert.equal(reply, null, "malformed awareness yields no reply");
+  assert.equal(awB.getStates().has(docA.clientID), false, "the valid prefix was not applied");
+  assert.ok(errors.includes("receive"), "trailing bytes reported via onError");
+  engB.destroy();
+  awA.destroy();
+  awB.destroy();
 });
 
 test("awareness: applying a remote update does NOT echo it back out (origin guard)", () => {

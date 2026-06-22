@@ -4,11 +4,9 @@
 // protocol frames; everything else (sync steps, encode/decode, awareness,
 // reliable delivery) lives in YProtocolSession. So this is just the transport glue.
 //
-// Awareness/presence frames are sent via AnyCable's `whisper` when the
-// subscription supports it (client-to-client, no server round-trip); on plain
-// ActionCable (no `whisper`) they fall back to a normal `send` and the server
-// relays them. Document updates always go through `send` (they must be
-// recorded/acked).
+// Awareness/presence frames use AnyCable's `whisper` when the subscription
+// supports it, but under a separate awareness-only envelope. Document frames
+// always use `send` so they pass through the server's persistence/ack path.
 //
 // The constructor does NOT auto-connect: wire your editor binding first, then
 // call `connect()`. Same `(doc, consumer, channelName, channelParams, opts)`
@@ -56,10 +54,7 @@ export interface CableConsumer {
 }
 
 export interface ActionCableProviderOptions
-  extends Pick<
-    YProtocolSessionOptions,
-    "reliable" | "resendInterval" | "maxUnconfirmedResends" | "onFallback" | "onError"
-  > {
+  extends Pick<YProtocolSessionOptions, "resendInterval" | "onError"> {
   /**
    * Awareness/presence instance. Omit (`undefined`) for a fresh
    * `new Awareness(doc)` the provider owns; pass `null` to disable awareness
@@ -69,8 +64,8 @@ export interface ActionCableProviderOptions
 }
 
 interface CableMessage {
-  m?: string;
   update?: string;
+  awareness?: string;
   ack?: number;
 }
 
@@ -107,10 +102,7 @@ export class ActionCableProvider {
 
     this.session = new YProtocolSession(doc, {
       awareness: this.awareness,
-      reliable: opts.reliable,
       resendInterval: opts.resendInterval,
-      maxUnconfirmedResends: opts.maxUnconfirmedResends,
-      onFallback: opts.onFallback,
       onError: this._onError,
       send: (frame, id, sendOpts) => this._send(frame, id, sendOpts),
     });
@@ -155,7 +147,8 @@ export class ActionCableProvider {
             provider.session.ack(message.ack);
             return;
           }
-          const payload = message && (message.m ?? message.update);
+          const awarenessPayload = message && message.awareness;
+          const payload = message && (awarenessPayload ?? message.update);
           if (typeof payload !== "string") return;
           // Guard base64 decode too: a malformed envelope must not throw into
           // the cable callback (session.receive is itself defensive).
@@ -164,6 +157,10 @@ export class ActionCableProvider {
             frame = fromBase64(payload);
           } catch (error) {
             provider._onError(error, "received");
+            return;
+          }
+          if (awarenessPayload !== undefined && frame[0] !== MessageType.Awareness) {
+            provider._onError(new Error("awareness envelope carried a non-awareness frame"), "received");
             return;
           }
           const reply = provider.session.receive(frame);
@@ -240,20 +237,20 @@ export class ActionCableProvider {
   }
 
   // Send one raw protocol frame over the cable. Awareness frames are whispered
-  // when the subscription supports it (AnyCable), else sent normally; document
-  // frames always go through `send`. `id` (reliable doc updates) is tagged onto
-  // the envelope so the server can ack. A no-op while disconnected: reliable
-  // frames stay queued in the session and flush on the next connect().
+  // when AnyCable exposes `subscription.whisper`; otherwise they fall back to a
+  // normal send. `id` (reliable doc updates) is tagged onto the envelope so the
+  // server can ack. A no-op while disconnected: reliable frames stay queued in
+  // the session and flush on the next connect().
   private _send(frame: Uint8Array, id: number | undefined, opts?: SendOptions): void {
     const sub = this.subscription;
     if (!sub) return;
     const update = toBase64(frame);
-    const payload = id === undefined ? { update } : { update, id };
     const isAwareness = opts?.awareness ?? frame[0] === MessageType.Awareness;
-    // Awareness rides AnyCable's whisper automatically when the subscription
-    // supports it (client-to-client, no server round-trip); otherwise a normal
-    // send the server relays. Document updates always send (recorded/acked).
-    if (isAwareness && typeof sub.whisper === "function") sub.whisper(payload);
-    else sub.send(payload);
+    if (isAwareness && typeof sub.whisper === "function") {
+      sub.whisper({ awareness: update });
+      return;
+    }
+    const payload = id === undefined ? { update } : { update, id };
+    sub.send(payload);
   }
 }

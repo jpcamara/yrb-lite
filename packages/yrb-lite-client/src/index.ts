@@ -7,8 +7,8 @@ export type { ReliableSyncOptions, TimerHandle } from "./reliable_sync.js";
 export { YProtocolSession, MessageType } from "./y_protocol_session.js";
 export type { YProtocolSessionOptions, SendOptions } from "./y_protocol_session.js";
 
-// Ready-made ActionCable / AnyCable provider built on YProtocolSession (with awareness
-// whisper support). Bring your own provider instead by composing YProtocolSession.
+// Ready-made ActionCable / AnyCable provider built on YProtocolSession.
+// Bring your own provider instead by composing YProtocolSession.
 export { ActionCableProvider } from "./actioncable_provider.js";
 export type {
   ActionCableProviderOptions,

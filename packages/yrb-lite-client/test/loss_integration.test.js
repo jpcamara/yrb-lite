@@ -21,7 +21,6 @@ test("no acknowledged update is lost under deterministic loss", () => {
     send(update, id) {
       if (dropSend(++sendN)) return; // frame lost in transit
       for (const seq of update) serverHas.add(seq); // server applies (idempotent)
-      if (id === undefined) return; // fire-and-forget, no ack expected
       if (dropAck(++ackN)) return; // ack lost on the way back
       client.onAck(id);
     },
@@ -47,7 +46,6 @@ test("no acknowledged update is lost under deterministic loss", () => {
   for (let round = 0; round < 200 && client.hasPending; round++) client.onTick();
 
   assert.equal(client.hasPending, false, "client queue fully drains");
-  assert.equal(client.reliable, true, "stayed reliable (acks did get through)");
   for (let s = 1; s <= TOTAL; s++) {
     assert.ok(serverHas.has(s), `server received update ${s}`);
   }

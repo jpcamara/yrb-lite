@@ -99,28 +99,37 @@ class SyncTest < Minitest::Test
     assert_equal :store, klass.sync_backend
   end
 
-  # `whisper: true` is passed to stream_from automatically under AnyCable (which
-  # adds a `whispers_to` method), and omitted on plain ActionCable (where it
-  # isn't supported). No configuration either way.
-  def whisper_stream_opts(anycable:)
+  # AnyCable awareness whispers are scoped to a separate awareness stream. The
+  # durable document stream is never whisper-enabled.
+  def subscribed_streams(anycable:)
     captured = []
     klass = Class.new do
       include YrbLite::ActionCable::Sync
 
-      define_method(:stream_from) { |_name, **opts, &_blk| captured << opts }
+      define_method(:stream_from) { |name, **opts, &_blk| captured << [name, opts] }
       define_method(:sync_stream_name) { "yrb_lite:doc" }
+      define_method(:sync_transmit) { |_bytes| nil }
+      define_singleton_method(:sync_backend) { :store }
+      define_singleton_method(:on_load) { ->(_key) {} }
+      define_singleton_method(:on_change) { ->(_key, _update) {} }
     end
     instance = klass.new
+    instance.instance_variable_set(:@sync_key, "doc")
     instance.define_singleton_method(:whispers_to) { |_b| nil } if anycable
-    instance.send(:sync_stream, "yrb_lite:doc")
-    captured.last
+    instance.send(:sync_for_store_backed)
+    captured
   end
 
-  def test_sync_stream_enables_whisper_automatically_under_anycable
-    assert whisper_stream_opts(anycable: true)[:whisper],
-           "AnyCable -> whisper enabled automatically"
-    refute whisper_stream_opts(anycable: false).key?(:whisper),
-           "plain ActionCable -> no whisper option"
+  def test_anycable_whisper_is_scoped_to_awareness_stream
+    anycable_streams = subscribed_streams(anycable: true)
+    assert_includes anycable_streams, ["yrb_lite:doc", {}],
+                    "document stream has no whisper option"
+    assert_includes anycable_streams, ["yrb_lite:doc:awareness", { whisper: true }],
+                    "awareness stream is whisper-enabled"
+
+    plain_streams = subscribed_streams(anycable: false)
+    assert_equal [["yrb_lite:doc", {}]], plain_streams,
+                 "plain ActionCable has no whisper stream"
   end
 
   def test_store_backed_answers_sync_step1_from_the_store
@@ -194,7 +203,7 @@ class SyncTest < Minitest::Test
     # A change that arrived from another process (different pid) is applied to
     # the local replica but not re-recorded; its origin process already did.
     helper.send(:sync_on_broadcast,
-                { "m" => Base64.strict_encode64(msg), "origin" => "other", "pid" => "process-b" })
+                { "update" => Base64.strict_encode64(msg), "origin" => "other", "pid" => "process-b" })
 
     refute_equal empty_sv, YrbLite::ActionCable::Sync.registry[key].encode_state_vector,
                  "a remote process's change updates this process's replica"
@@ -208,7 +217,7 @@ class SyncTest < Minitest::Test
     msg = YrbLite::Awareness.new.encode_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
 
     helper.send(:sync_on_broadcast,
-                { "m" => Base64.strict_encode64(msg), "origin" => "x", "pid" => YrbLite::ActionCable::Sync.process_id })
+                { "update" => Base64.strict_encode64(msg), "origin" => "x", "pid" => YrbLite::ActionCable::Sync.process_id })
 
     assert_equal sv_before, YrbLite::ActionCable::Sync.registry[key].encode_state_vector,
                  "a broadcast from this same process is not applied a second time"
@@ -261,7 +270,7 @@ class SyncTest < Minitest::Test
   # envelope a client would send.
   def update_message(update_bytes)
     frame = YrbLite::Awareness.new.encode_update(update_bytes)
-    { "m" => Base64.strict_encode64(frame) }
+    { "update" => Base64.strict_encode64(frame) }
   end
 
   # A channel-like object with an on_change recorder, capturing transmits and
@@ -283,6 +292,18 @@ class SyncTest < Minitest::Test
     helper.instance_variable_set(:@sync_origin, "origin-#{key}")
     helper.instance_variable_set(:@sync_clients, [])
     helper
+  end
+
+  def test_legacy_m_envelope_is_ignored
+    recorded = []
+    broadcasts = []
+    helper = authoritative_helper("legacy-envelope-room", broadcasts: broadcasts) { |_k, update| recorded << update }
+    frame = YrbLite::Awareness.new.encode_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
+
+    helper.sync_receive({ "m" => Base64.strict_encode64(frame), "id" => 7 })
+
+    assert_empty recorded, "legacy m payloads are not recorded"
+    assert_empty broadcasts, "legacy m payloads are not distributed"
   end
 
   def test_on_change_records_exact_delta_before_apply_and_distribute
@@ -486,8 +507,8 @@ class SyncTest < Minitest::Test
     # changes, so they must not hit the audit recorder.
     presence = YrbLite::Awareness.new
     presence.set_local_state('{"user":"alice"}')
-    helper.sync_receive({ "m" => Base64.strict_encode64(presence.encode_awareness_update) })
-    helper.sync_receive({ "m" => Base64.strict_encode64(YrbLite::Doc.new.sync_step1) })
+    helper.sync_receive({ "update" => Base64.strict_encode64(presence.encode_awareness_update) })
+    helper.sync_receive({ "update" => Base64.strict_encode64(YrbLite::Doc.new.sync_step1) })
 
     assert_empty recorded, "only document changes are recorded"
   end
@@ -503,7 +524,7 @@ class SyncTest < Minitest::Test
     empty_sv = YrbLite::Awareness.new.encode_state_vector
 
     empty_update = YrbLite::Awareness.new.encode_update(YjsFixtures::EmptyDoc::UPDATE)
-    helper.sync_receive({ "m" => Base64.strict_encode64(empty_update) })
+    helper.sync_receive({ "update" => Base64.strict_encode64(empty_update) })
 
     assert_empty recorded, "a no-op change must not be recorded"
     assert_empty broadcasts, "a no-op change must not be distributed"
@@ -705,7 +726,7 @@ class SyncTest < Minitest::Test
     helper = fast_helper("ack-noop", transmits: transmits, broadcasts: [])
 
     empty = YrbLite::Awareness.new.encode_update(YjsFixtures::EmptyDoc::UPDATE)
-    helper.sync_receive({ "m" => Base64.strict_encode64(empty), "id" => 9 })
+    helper.sync_receive({ "update" => Base64.strict_encode64(empty), "id" => 9 })
 
     assert_empty acks_in(transmits), "a no-op update is not acked"
   end
@@ -824,7 +845,7 @@ class SyncTest < Minitest::Test
     helper.define_singleton_method(:transmit) { |data| acks << data }
 
     frame = YrbLite::Awareness.new.encode_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
-    msg = { "m" => Base64.strict_encode64(frame), "id" => 7 }
+    msg = { "update" => Base64.strict_encode64(frame), "id" => 7 }
 
     helper.sync_receive(msg) # first delivery: record + relay + ack
     helper.sync_receive(msg) # lost-ack retry: byte-identical

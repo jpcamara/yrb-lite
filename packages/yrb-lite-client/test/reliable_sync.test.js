@@ -99,52 +99,19 @@ test("periodic tick retransmits the tail while unacked", () => {
   assert.equal(h.sent.length, after + 1, "nothing to resend once acked");
 });
 
-test("falls back to fire-and-forget after N unacked resends", () => {
-  let fellBack = false;
-  const h = harness({ maxUnconfirmedResends: 3, onFallback: () => (fellBack = true) });
+test("unacked updates stay retained and keep retransmitting until acked", () => {
+  const h = harness();
   h.rs.onConnect();
   h.rs.enqueue(u(1));
-  for (let i = 0; i < 4; i++) h.tick(); // exceed the threshold with no ack
-
-  assert.equal(h.rs.reliable, false, "reliable mode is disabled");
-  assert.equal(fellBack, true, "onFallback fired");
-  assert.equal(h.rs.hasPending, false, "queue cleared on fallback");
-  assert.equal(h.hasTimer(), false, "timer stopped");
-
-  // Post-fallback enqueues are sent immediately, no id, no queue.
   const before = h.sent.length;
-  h.rs.enqueue(u(9));
-  assert.deepEqual(h.sent.at(-1), { update: u(9), id: undefined });
-  assert.equal(h.sent.length, before + 1);
-  assert.equal(h.rs.hasPending, false);
-});
+  for (let i = 0; i < 10; i++) h.tick();
 
-test("an ack resets the fallback counter (slow but live link doesn't fall back)", () => {
-  const h = harness({ maxUnconfirmedResends: 2 });
-  h.rs.onConnect();
-  h.rs.enqueue(u(1));
-  h.tick();
-  h.tick();
-  h.rs.onAck(1); // progress!
-  h.rs.enqueue(u(2));
-  for (let i = 0; i < 2; i++) h.tick();
-  assert.equal(h.rs.reliable, true, "acks keep the connection out of fallback");
-});
+  assert.equal(h.sent.length, before + 10, "each tick retransmits the pending tail");
+  assert.equal(h.rs.hasPending, true, "the update is retained without an ack");
+  assert.equal(h.hasTimer(), true, "the retransmit timer remains active");
 
-test("fallback delivers the tail one last time before dropping retention", () => {
-  const h = harness({ maxUnconfirmedResends: 2 });
-  h.rs.onConnect();
-  h.rs.enqueue(u(1));
-  h.rs.enqueue(u(2));
-  const before = h.sent.length;
-  for (let i = 0; i < 3; i++) h.tick(); // trip the fallback
-
-  assert.equal(h.rs.reliable, false, "fell back");
-  const afterFallback = h.sent.slice(before);
-  assert.ok(afterFallback.length >= 1, "the tail was flushed during fallback");
-  const last = h.sent.at(-1);
-  assert.equal(last.id, undefined, "the final delivery is fire-and-forget (no id)");
-  assert.equal(h.rs.hasPending, false, "retention dropped after the final flush");
+  h.rs.onAck(1);
+  assert.equal(h.rs.hasPending, false, "ack drains the retained update");
 });
 
 test("onAck ignores malformed, negative, and impossible future acks", () => {

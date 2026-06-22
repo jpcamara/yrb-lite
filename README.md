@@ -17,8 +17,8 @@ class DocumentChannel < ApplicationCable::Channel
 end
 ```
 
-On the browser, use the [`@y-rb/actioncable`](https://www.npmjs.com/package/@y-rb/actioncable)
-provider as-is. Tiptap, ProseMirror, and BlockNote all sync through it.
+On the browser, use the `yrb-lite-client` `ActionCableProvider`. Tiptap,
+ProseMirror, and BlockNote all sync through the shared Y.Doc/Awareness it owns.
 
 ## What you get
 
@@ -239,23 +239,22 @@ end
 
 The demo checks this against a real anycable-go + RPC server
 (`frontend/anycable_probe.mjs`, `anycable_concurrent.mjs`): liveness, the
-`@y-rb/actioncable` provider, cross-process reads, and concurrent convergence.
+yrb-lite client provider, cross-process reads, and concurrent convergence.
 
 The wire format is the standard y-protocols binary messages, base64-encoded in
-the ActionCable envelope. The server accepts the `@y-rb/actioncable` provider's
-`{ "update" => ... }` envelope (and its own `{ "m" => ... }`) and sends one
-message per frame, so the off-the-shelf provider works with no custom client
-code:
+the ActionCable envelope. yrb-lite uses one canonical document envelope,
+`{ "update" => ... }`, and sends one message per frame.
 
 ```js
-import { createConsumer } from "@rails/actioncable"
-import { WebsocketProvider } from "@y-rb/actioncable"
+import { createConsumer } from "@anycable/web"
+import { ActionCableProvider } from "yrb-lite-client"
 
-const provider = new WebsocketProvider(ydoc, createConsumer(), "DocumentChannel", { id: docId })
+const provider = new ActionCableProvider(ydoc, createConsumer(), "DocumentChannel", { id: docId })
+provider.connect()
 ```
 
 [`examples/actioncable-demo`](examples/actioncable-demo) is a full Rails + Tiptap
-app using that provider, with end-to-end tests.
+app using the yrb-lite provider, with end-to-end tests.
 
 #### Authoritative audit mode (record before distribute)
 
@@ -305,14 +304,14 @@ further edits, the server stays idle and never asks anyone to resync, so that
 edit is gone -- even though the client believes it was saved. CRDTs converge the
 state everyone *has*; they don't recover an update that never arrived.
 
-yrb-lite closes that gap with an opt-in, client-driven acknowledgement. If an
-incoming frame carries an `"id"`, the server replies `{ "ack": <id> }` once the
-update has been **accepted** -- recorded in audit mode, applied in fast mode. A
+yrb-lite closes that gap with client-driven acknowledgements. Document updates
+carry an `"id"`, and the server replies `{ "ack": <id> }` once the update has
+been **accepted** -- recorded in audit mode, applied in fast mode. A
 causally-gapped update is not acked (it gets a resync instead), so the client
-knows it hasn't landed yet.
+knows it hasn't landed yet and keeps retransmitting.
 
 ```
-client -> server   { "m": "<base64 update>", "id": 42 }
+client -> server   { "update": "<base64 update>", "id": 42 }
 server -> client    { "ack": 42 }     # update accepted; safe to forget
 ```
 
@@ -324,30 +323,24 @@ no-op that just re-acks. An update lost in transit is recovered by the client's
 own retransmit -- no reconnect required, and no dependence on a later edit
 happening to trigger a resync.
 
-This is entirely **self-gating**: stock clients send no `"id"`, so they never get
-acks and behave exactly as before. Only a client that opts in by tagging its
-frames participates.
-
 Two client examples ship in the demo:
 
 - [`frontend/reliable.mjs`](examples/actioncable-demo/frontend/reliable.mjs) — a
   minimal reference client showing the raw mechanism (tag with an id, retain,
   retransmit on a timer, drain on ack), with an end-to-end test that loses an
   update mid-flight and recovers it purely by retransmit.
-- [`frontend/provider/reliable_actioncable_provider.mjs`](examples/actioncable-demo/frontend/provider/reliable_actioncable_provider.mjs)
-  — the standard `@y-rb/actioncable` `WebsocketProvider`, vendored and augmented
-  for production use. It's a drop-in replacement that speaks the same protocol
-  and envelope, and adds reliability with **sync-since-last-ack** framing: rather
-  than retransmitting updates one by one, it keeps the unacknowledged local
-  updates in a queue and sends their *merge* as a single causally-complete delta,
+- `yrb-lite-client`'s `ActionCableProvider` — the production provider for
+  ActionCable/AnyCable. It speaks the canonical yrb-lite envelope and adds
+  reliability with **sync-since-last-ack** framing: rather than retransmitting
+  updates one by one, it keeps the unacknowledged local updates in a queue and
+  sends their *merge* as a single causally-complete delta,
   with the id being the highest sequence in the batch (so one `{ ack: id }`
   cumulatively confirms everything up to it). Because the whole unacked tail goes
   as one self-contained delta, the server never sees an internal gap and never
   has to round-trip a resync for a lost middle update — the next edit, or the
-  next timer tick, carries it. Awareness stays fire-and-forget; against a server
-  that doesn't implement acks it warns once, sends the pending tail one last time,
-  and falls back to best-effort plain delivery; and `reliable: false` opts out
-  entirely. The demo's editor uses this provider.
+  next timer tick, carries it. Awareness stays fire-and-forget. Document updates
+  keep retransmitting until the server acks them. The demo's editor uses this
+  provider.
 
 ### User Awareness/Presence
 

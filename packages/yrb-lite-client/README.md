@@ -9,20 +9,18 @@ Three layers, use whichever you need:
 
 - **`ActionCableProvider`** — a ready-made Yjs provider for ActionCable /
   AnyCable. Pass a `Y.Doc`, a cable consumer, and a channel; it wires the
-  subscription and you're collaborating. Awareness/presence automatically rides
-  AnyCable's `whisper` when the consumer supports it (client-to-client, no server
-  round-trip), and falls back to a normal server-relayed send on plain
-  ActionCable — nothing to configure. Document updates always go through the
-  server (recorded/acked).
+  subscription and you're collaborating. Awareness/presence rides AnyCable
+  `whisper` when available via an awareness-only envelope and falls back to
+  normal sends on plain ActionCable; document updates always go through the
+  server as reliable recorded/acked updates.
 - **`YProtocolSession`** — the transport-agnostic core. Binds to a `Y.Doc` (+ optional
   `Awareness`) and owns the y-protocols **message encode/decode**, the
   **sync-step handshake** (SyncStep1 / SyncStep2 / Update), **awareness**, and
   reliable delivery. Speaks raw `Uint8Array` frames; you wire any socket.
 - **`ReliableSync`** — the zero-dependency reliable-delivery state machine on its
   own: ack-tracked queue, **sync-since-last-ack** (the unacked tail merged into
-  one causally-complete delta), cumulative acks, retransmit + "server doesn't
-  support acks" fallback, and reconnect replay. Compose it yourself if you
-  already have your own framing.
+  one causally-complete delta), cumulative acks, retransmit, and reconnect
+  replay. Compose it yourself if you already have your own framing.
 
 ## Install
 
@@ -76,9 +74,10 @@ to own.
 
 On the server, include `YrbLite::ActionCable::Sync` in a channel named
 `DocumentChannel` (the [`yrb-lite-actioncable`](https://rubygems.org/gems/yrb-lite-actioncable)
-gem), which enables AnyCable whispering on the stream automatically. Need a
-different transport or framing? Drop down to `YProtocolSession` and supply your own
-`send`.
+gem). The server subscribes document broadcasts and AnyCable awareness whispers
+on separate streams, so the document stream is not whisper-enabled. Need a
+different transport or framing? Drop down to `YProtocolSession` and supply your
+own `send`.
 
 ## YProtocolSession
 
@@ -105,7 +104,7 @@ subscription.connected    = () => session.onConnect();      // handshake + repla
 subscription.disconnected = () => session.onDisconnect();   // pause + clear presence
 subscription.received = (msg) => {
   if (msg.ack !== undefined) return session.ack(msg.ack);   // reliable ack envelope
-  const reply = session.receive(fromBase64(msg.update || msg.m)); // decode + apply
+  const reply = session.receive(fromBase64(msg.update));     // decode + apply
   if (reply) subscription.send({ update: toBase64(reply) });     // e.g. answer a SyncStep1
 };
 // session.synced -> caught up; session.hasPending -> unacked edits in flight
@@ -137,10 +136,9 @@ rs.onConnect();      // (re)connected — replay the tail, resume retransmits
 rs.onDisconnect();   // dropped — keep the queue, pause
 ```
 
-While ack tracking is active, pending updates are retained and replayed until the
-server acknowledges them. If no ack ever arrives, `ReliableSync` assumes the
-server does not support the ack extension, sends the pending tail one final time,
-then downgrades to best-effort plain delivery.
+Pending updates are retained and replayed until the server acknowledges them. If
+no ack arrives, `ReliableSync` keeps retrying rather than downgrading document
+delivery to best-effort.
 
 ## How it fits
 

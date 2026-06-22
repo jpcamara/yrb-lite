@@ -5,8 +5,9 @@ import * as encoding from "lib0/encoding";
 import { Awareness } from "y-protocols/awareness";
 import { ActionCableProvider, MessageType, fromBase64, toBase64 } from "../dist/index.js";
 
-// A fake ActionCable/AnyCable consumer. `withWhisper` toggles AnyCable's
-// client-to-client whisper method so we can test both routing paths.
+// A fake ActionCable/AnyCable consumer. `withWhisper` exposes AnyCable's
+// client-to-client whisper method so tests can verify awareness uses it without
+// routing document updates through it.
 function fakeConsumer({ withWhisper } = { withWhisper: false }) {
   const calls = { send: [], whisper: [], removed: 0 };
   let sub = null;
@@ -35,6 +36,7 @@ function fakeConsumer({ withWhisper } = { withWhisper: false }) {
 }
 
 const frameTypeOf = (b64) => fromBase64(b64)[0];
+const frameTypeOfMessage = (message) => frameTypeOf(message.awareness ?? message.update);
 
 // Build the envelope a server sends to say "you're caught up": a Sync frame
 // carrying SyncStep2 (message type 1) with the peer's full state.
@@ -70,13 +72,12 @@ test("on connect: the SyncStep1 handshake goes via normal send, never whisper", 
   p.connect();
   c.deliverConnected();
   const sentSync = c.calls.send.filter((m) => frameTypeOf(m.update) === MessageType.Sync);
-  const whisperedSync = c.calls.whisper.filter((m) => frameTypeOf(m.update) === MessageType.Sync);
+  const whisperedSync = c.calls.whisper.filter((m) => frameTypeOfMessage(m) === MessageType.Sync);
   assert.ok(sentSync.length >= 1, "the SyncStep1 handshake was sent");
-  assert.equal(whisperedSync.length, 0, "no Sync frame is ever whispered (only awareness is)");
+  assert.equal(whisperedSync.length, 0, "no Sync frame is ever whispered");
 });
 
 test("AnyCable (whisper available): awareness is WHISPERED, document updates are SENT", (t) => {
-  // Automatic -- no flag: a whisper-capable subscription gets presence whispered.
   const doc = new Y.Doc();
   const c = fakeConsumer({ withWhisper: true });
   const p = makeProvider(t, doc, c, { id: "r3" });
@@ -88,14 +89,15 @@ test("AnyCable (whisper available): awareness is WHISPERED, document updates are
 
   const docSends = c.calls.send.filter((m) => frameTypeOf(m.update) === MessageType.Sync);
   const awarenessSends = c.calls.send.filter((m) => frameTypeOf(m.update) === MessageType.Awareness);
-  const awarenessWhispers = c.calls.whisper.filter((m) => frameTypeOf(m.update) === MessageType.Awareness);
+  const awarenessWhispers = c.calls.whisper.filter((m) => frameTypeOf(m.awareness) === MessageType.Awareness);
 
   assert.ok(docSends.length >= 1, "the document update went through send");
-  assert.equal(awarenessSends.length, 0, "no awareness frame went through send");
-  assert.ok(awarenessWhispers.length >= 1, "the presence change was whispered automatically");
+  assert.equal(awarenessSends.length, 0, "the presence change did not go through send");
+  assert.ok(awarenessWhispers.length >= 1, "the presence change was whispered");
+  assert.ok(c.calls.whisper.every((m) => typeof m.awareness === "string"), "whispers use the awareness-only envelope");
 });
 
-test("plain ActionCable (no whisper): awareness falls back to normal send", (t) => {
+test("plain ActionCable: awareness uses normal send", (t) => {
   const doc = new Y.Doc();
   const c = fakeConsumer({ withWhisper: false });
   const p = makeProvider(t, doc, c, { id: "r4" });
@@ -105,7 +107,7 @@ test("plain ActionCable (no whisper): awareness falls back to normal send", (t) 
   p.awareness.setLocalStateField("user", "bob");
 
   const awarenessSends = c.calls.send.filter((m) => frameTypeOf(m.update) === MessageType.Awareness);
-  assert.equal(c.calls.whisper.length, 0, "no whisper method, so nothing whispered");
+  assert.equal(c.calls.whisper.length, 0, "nothing whispered");
   assert.ok(awarenessSends.length >= 1, "presence still delivered, via normal send");
 });
 
@@ -179,7 +181,7 @@ test("disconnect() broadcasts a presence removal while the transport is still li
 
   const removalFrames = c.calls.whisper
     .slice(whispersBefore)
-    .filter((m) => frameTypeOf(m.update) === MessageType.Awareness);
+    .filter((m) => frameTypeOf(m.awareness) === MessageType.Awareness);
   assert.ok(removalFrames.length >= 1, "a final awareness frame went out on disconnect");
   assert.equal(p.awareness.getLocalState(), null, "local presence cleared");
 
@@ -261,9 +263,35 @@ test("a browser pagehide broadcasts a best-effort presence removal", (t) => {
   handlers.get("pagehide")(); // fire pagehide
   const removal = c.calls.whisper
     .slice(whispersBefore)
-    .filter((m) => frameTypeOf(m.update) === MessageType.Awareness);
+    .filter((m) => frameTypeOf(m.awareness) === MessageType.Awareness);
   assert.ok(removal.length >= 1, "pagehide sent a presence removal");
 
   p.disconnect();
   assert.ok(!handlers.has("pagehide"), "disconnect() unregistered the pagehide handler");
+});
+
+test("received awareness envelope rejects non-awareness frames", (t) => {
+  const errors = [];
+  const c = fakeConsumer({ withWhisper: true });
+  const p = makeProvider(t, new Y.Doc(), c, { id: "aw1" }, { onError: (err, context) => errors.push({ err, context }) });
+  p.connect();
+  c.deliverConnected();
+
+  const bad = syncStep2Envelope(new Y.Doc()).update;
+  c.deliverReceived({ awareness: bad });
+
+  assert.equal(errors.length, 1, "bad awareness envelope was reported");
+  assert.equal(errors[0].context, "received");
+  assert.match(String(errors[0].err?.message ?? errors[0].err), /non-awareness/);
+});
+
+test("received legacy m envelope is ignored", (t) => {
+  const c = fakeConsumer();
+  const p = makeProvider(t, new Y.Doc(), c, { id: "legacy1" });
+  p.connect();
+  c.deliverConnected();
+
+  c.deliverReceived({ m: syncStep2Envelope(new Y.Doc()).update });
+
+  assert.equal(p.synced, false, "legacy m payloads are not accepted");
 });

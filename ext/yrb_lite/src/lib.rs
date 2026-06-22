@@ -10,7 +10,8 @@ use yrs::{ClientID, Doc, ReadTxn, Transact};
 mod protocol;
 use protocol::{
     awareness_client_ids_in, classify_message, doc_has_pending, merged_doc_update,
-    update_advances_doc, update_is_ready,
+    update_advances_doc, update_is_ready, validate_frame_client_ids,
+    validate_state_vector_client_ids, validate_update_client_ids,
 };
 
 /// Wrapper around yrs Doc.
@@ -224,6 +225,7 @@ impl RbDoc {
         let update_bytes = copy_bytes(update);
         let doc = &self.0;
         nogvl(move || -> Result<(), String> {
+            validate_update_client_ids(&update_bytes)?;
             let update = yrs::Update::decode_v1(&update_bytes).map_err(|e| e.to_string())?;
             let mut txn = doc.transact_mut();
             txn.apply_update(update).map_err(|e| e.to_string())
@@ -272,6 +274,7 @@ impl RbDoc {
         let sv_data = copy_bytes(sv_bytes);
         let doc = &self.0;
         let encoded = nogvl(move || -> Result<Vec<u8>, String> {
+            validate_state_vector_client_ids(&sv_data)?;
             let sv = yrs::StateVector::decode_v1(&sv_data).map_err(|e| e.to_string())?;
             let txn = doc.transact();
             let update = txn.encode_state_as_update_v1(&sv);
@@ -289,6 +292,7 @@ impl RbDoc {
 
         let (msg_type, sync_type, response) =
             nogvl(move || -> Result<(u8, u8, Vec<u8>), String> {
+                validate_frame_client_ids(&data_bytes)?;
                 let msg = Message::decode_v1(&data_bytes).map_err(|e| e.to_string())?;
 
                 match msg {
@@ -402,6 +406,7 @@ impl RbAwareness {
         let awareness = &self.0;
 
         let encoded = nogvl(move || -> Result<Vec<u8>, String> {
+            validate_frame_client_ids(&data_bytes)?;
             let mut awareness = awareness.lock().unwrap();
             let protocol = DefaultProtocol;
             let responses = protocol
@@ -423,10 +428,15 @@ impl RbAwareness {
     }
 
     /// Encode an update message for broadcasting changes to peers.
-    fn encode_update(&self, update: RString) -> RString {
+    fn encode_update(&self, update: RString) -> Result<RString, Error> {
         let update_bytes = copy_bytes(update);
+        nogvl({
+            let update_bytes = update_bytes.clone();
+            move || validate_update_client_ids(&update_bytes)
+        })
+        .map_err(yrb_error)?;
         let msg = Message::Sync(SyncMessage::Update(update_bytes));
-        binary_string(&msg.encode_v1())
+        Ok(binary_string(&msg.encode_v1()))
     }
 
     /// Get the current state vector encoded as bytes
@@ -512,6 +522,7 @@ impl RbAwareness {
         let update_bytes = copy_bytes(update);
         let awareness = &self.0;
         nogvl(move || -> Result<(), String> {
+            validate_update_client_ids(&update_bytes)?;
             let update = yrs::Update::decode_v1(&update_bytes).map_err(|e| e.to_string())?;
             let doc = awareness.lock().unwrap().doc().clone();
             let mut txn = doc.transact_mut();
@@ -597,6 +608,10 @@ impl RbAwareness {
     /// IDs are skipped (so we never broadcast phantom removals). Returns an
     /// empty string when nothing was removed.
     fn remove_clients(&self, client_ids: Vec<u64>) -> Result<RString, Error> {
+        let client_ids = client_ids
+            .into_iter()
+            .map(validate_client_id)
+            .collect::<Result<Vec<_>, _>>()?;
         let awareness = &self.0;
         let encoded = nogvl(move || -> Result<Vec<u8>, String> {
             let mut awareness = awareness.lock().unwrap();

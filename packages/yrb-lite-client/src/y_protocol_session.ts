@@ -15,7 +15,7 @@
 //   const reply = receive(frame)  -> a binary protocol frame arrived; send `reply` if non-null
 // Local document edits and awareness changes are picked up automatically via the
 // doc's / awareness's "update" events.
-import { mergeUpdates, type Doc } from "yjs";
+import { Doc, mergeUpdates } from "yjs";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import { readSyncMessage, writeSyncStep1, writeUpdate, messageYjsSyncStep2 } from "y-protocols/sync";
@@ -34,9 +34,7 @@ export const MessageType = { Sync: 0, Awareness: 1, Auth: 2, QueryAwareness: 3 }
 export interface SendOptions {
   /**
    * True for awareness/presence frames. These are ephemeral and fire-and-forget,
-   * so a transport that supports it (e.g. AnyCable `whisper`) can broadcast them
-   * client-to-client without a server round-trip. Transports without that just
-   * send normally.
+   * so transports can route, throttle, or observe them separately if needed.
    */
   awareness?: boolean;
 }
@@ -45,19 +43,13 @@ export interface YProtocolSessionOptions {
   /**
    * Transmit one raw protocol frame. `id` is set only for reliable document
    * updates (tag it onto your envelope so the server can ack). `opts.awareness`
-   * marks presence frames so the transport can whisper them where supported.
+   * marks presence frames for transports that treat them separately.
    */
   send: (frame: Uint8Array, id: number | undefined, opts?: SendOptions) => void;
   /** Optional awareness/presence. When omitted, awareness frames are ignored. */
   awareness?: Awareness | null;
-  /** Use ack-tracked reliable delivery (default true). */
-  reliable?: boolean;
   /** Forwarded to ReliableSync. */
   resendInterval?: number;
-  /** Forwarded to ReliableSync. */
-  maxUnconfirmedResends?: number;
-  /** Forwarded to ReliableSync. */
-  onFallback?: () => void;
   /**
    * Called when an incoming frame can't be decoded/applied (malformed bytes,
    * truncated message, unexpected structure). The frame is dropped and the
@@ -75,7 +67,6 @@ type AwarenessChange = { added: number[]; updated: number[]; removed: number[] }
 export class YProtocolSession {
   readonly doc: Doc;
   readonly awareness: Awareness | null;
-  reliable: boolean;
 
   private _send: YProtocolSessionOptions["send"];
   private _onError: (error: unknown, context: string) => void;
@@ -88,10 +79,7 @@ export class YProtocolSession {
     const {
       send,
       awareness = null,
-      reliable = true,
       resendInterval,
-      maxUnconfirmedResends,
-      onFallback,
       onError,
       setInterval: setIntervalFn,
       clearInterval: clearIntervalFn,
@@ -101,7 +89,6 @@ export class YProtocolSession {
 
     this.doc = doc;
     this.awareness = awareness;
-    this.reliable = reliable;
     this._send = send;
     this._onError = onError ?? ((error, context) => console.warn(`[yrb-lite] ${context}:`, error));
 
@@ -109,16 +96,13 @@ export class YProtocolSession {
       merge: mergeUpdates,
       send: (update, id) => this._send(this._frameUpdate(update), id),
       resendInterval,
-      maxUnconfirmedResends,
-      onFallback,
       setInterval: setIntervalFn,
       clearInterval: clearIntervalFn,
     });
 
     this._onDocUpdate = (update: Uint8Array, origin: unknown) => {
       if (origin === this) return; // applied from the server; don't echo it back
-      if (this.reliable && this._delivery.reliable) this._delivery.enqueue(update);
-      else this._send(this._frameUpdate(update), undefined);
+      this._delivery.enqueue(update);
     };
     this.doc.on("update", this._onDocUpdate);
 
@@ -152,7 +136,7 @@ export class YProtocolSession {
     if (this.awareness && this.awareness.getLocalState() !== null) {
       this._send(this._frameAwareness([this.doc.clientID]), undefined, { awareness: true });
     }
-    if (this.reliable) this._delivery.onConnect();
+    this._delivery.onConnect();
   }
 
   /** Transport dropped: pause retransmits (queue kept) and clear remote presence. */
@@ -191,6 +175,9 @@ export class YProtocolSession {
     // A malformed/truncated frame must never take down the transport callback:
     // decode + apply defensively, drop the frame on error, keep the session live.
     try {
+      const validatedType = this._validateFrame(frame);
+      if (validatedType === null) return null;
+
       const decoder = decoding.createDecoder(frame);
       const encoder = encoding.createEncoder();
       const type = decoding.readVarUint(decoder);
@@ -218,13 +205,6 @@ export class YProtocolSession {
           break;
         default:
           return null; // unknown message type: ignore
-      }
-      // This protocol is one message per frame. Anything left after a complete
-      // message is malformed (trailing garbage, or low-level packed messages
-      // whose tail we'd silently drop) -- reject it rather than partially trust.
-      if (decoding.hasContent(decoder)) {
-        this._onError(new Error("frame has trailing bytes after a complete message"), "receive");
-        return null;
       }
       return encoding.length(encoder) > 1 ? encoding.toUint8Array(encoder) : null;
     } catch (error) {
@@ -259,5 +239,46 @@ export class YProtocolSession {
     encoding.writeVarUint(e, MessageType.Awareness);
     encoding.writeVarUint8Array(e, encodeAwarenessUpdate(this.awareness as Awareness, clients));
     return encoding.toUint8Array(e);
+  }
+
+  private _validateFrame(frame: Uint8Array): number | null {
+    const decoder = decoding.createDecoder(frame);
+    const type = decoding.readVarUint(decoder);
+    switch (type) {
+      case MessageType.Sync: {
+        const scratchDoc = new Doc();
+        try {
+          const scratchEncoder = encoding.createEncoder();
+          encoding.writeVarUint(scratchEncoder, MessageType.Sync);
+          readSyncMessage(decoder, scratchEncoder, scratchDoc, this);
+        } finally {
+          scratchDoc.destroy();
+        }
+        break;
+      }
+      case MessageType.Awareness:
+        decoding.readVarUint8Array(decoder);
+        break;
+      case MessageType.QueryAwareness:
+        break;
+      case MessageType.Auth: {
+        const scratchDoc = new Doc();
+        try {
+          readAuthMessage(decoder, scratchDoc, () => {});
+        } finally {
+          scratchDoc.destroy();
+        }
+        break;
+      }
+      default:
+        return null; // unknown message type: ignore
+    }
+    // This protocol is one message per frame. Anything left after a complete
+    // message is malformed (trailing garbage, or low-level packed messages
+    // whose tail we'd silently drop) -- reject before mutating local state.
+    if (decoding.hasContent(decoder)) {
+      throw new Error("frame has trailing bytes after a complete message");
+    }
+    return type;
   }
 }

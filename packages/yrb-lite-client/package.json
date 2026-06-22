@@ -66,6 +66,9 @@
       "optional": true
     }
   },
+  "dependencies": {
+    "lib0": "^0.2.117"
+  },
   "devDependencies": {
     "yjs": "^13.6.0",
     "y-protocols": "^1.0.5",

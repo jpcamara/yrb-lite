@@ -11,8 +11,9 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
   # (and awareness/presence) with browser clients. Messages are the standard
   # y-protocols binary messages, base64-encoded in a JSON envelope:
   #
-  #   { "m" => "<base64 bytes>" }              # client -> server
-  #   { "m" => "...", "origin" => "<id>" }     # server -> subscribers
+  #   { "update" => "<base64 bytes>", "id" => 42 } # client -> server
+  #   { "update" => "...", "origin" => "<id>" }    # server -> subscribers
+  #   { "ack" => 42 }                              # server -> sender
   #
   # Example:
   #   class DocumentChannel < ApplicationCable::Channel
@@ -123,11 +124,11 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       #     Works under AnyCable (broadcasts handled outside Ruby, no worker
       #     affinity) and across processes. Requires `on_load` and `on_change`.
       #
-      #     Presence in :store mode is peer-whisper only: the server relays
-      #     awareness but keeps no ephemeral awareness state and answers no
-      #     awareness query, so a late joiner sees other cursors as they next
-      #     move rather than immediately. Document data is fully consistent; only
-      #     presence is best-effort.
+      #     Presence in :store mode is server-relayed but not stored: the server
+      #     keeps no ephemeral awareness state and answers no awareness query, so
+      #     a late joiner sees other cursors as they next move rather than
+      #     immediately. Document data is fully consistent; only presence is
+      #     best-effort.
       def sync_backend(mode = nil)
         @sync_backend = mode if mode
         return @sync_backend if defined?(@sync_backend) && @sync_backend
@@ -162,11 +163,12 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       sync_stream sync_stream_name, coder: ActiveSupport::JSON do |payload|
         sync_on_broadcast(payload)
       end
+      sync_stream sync_awareness_stream_name, whisper: true if respond_to?(:whispers_to)
 
       # Opening handshake: SyncStep1 then the current awareness, each as its
       # own single-message frame, so providers that parse one message per frame
-      # (e.g. @y-rb/actioncable) handle both. The client replies SyncStep2 to
-      # the SyncStep1, delivering its state to the server.
+      # handle both. The client replies SyncStep2 to the SyncStep1, delivering
+      # its state to the server.
       sync_transmit(awareness.sync_step1)
       sync_transmit(awareness.encode_awareness_update)
     end
@@ -179,22 +181,19 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # strict authoritative path (record -> apply -> broadcast, serialized per
     # document); otherwise the fast path is used.
     #
-    # Reliable delivery (opt-in, client-driven): if the frame carries an "id",
-    # the server replies `{ "ack" => id }` once the update has been accepted
+    # Reliable delivery: document updates carry an "id", and the server replies
+    # `{ "ack" => id }` once the update has been accepted
     # (recorded in audit mode, applied in fast mode). A causally-gapped update
-    # is not acked -- it gets a resync instead -- so an ack-aware client knows
-    # to retransmit until the update lands. Stock clients send no "id", never
-    # get acks, and are completely unaffected.
+    # is not acked -- it gets a resync instead -- so the client retransmits
+    # until the update lands.
     def sync_receive(data, key = nil)
       # Pass `key` (params[:id]) when your transport doesn't keep the channel
       # instance alive across actions. Under AnyCable each RPC command gets a
       # fresh channel, so instance variables set in `subscribed` are gone here.
       @sync_key = key.to_s if key
 
-      # Accept both envelope keys: "m" (yrb-lite's own clients) and "update"
-      # (the @y-rb/actioncable browser provider).
-      m = data.is_a?(Hash) ? (data["m"] || data["update"]) : nil
-      return unless m.is_a?(String)
+      encoded = data.is_a?(Hash) ? data["update"] : nil
+      return unless encoded.is_a?(String)
 
       # Optional client-supplied id for reliable delivery (see sync_send_ack).
       id = data.is_a?(Hash) ? data["id"] : nil
@@ -203,17 +202,17 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       # is ~4/3 the decoded size) and again after, so a client can't force large
       # base64 decodes / native parses / merges. A dropped frame is never acked.
       cap = self.class.max_frame_bytes
-      return if cap && m.bytesize > (cap * 4 / 3) + 4
+      return if cap && encoded.bytesize > (cap * 4 / 3) + 4
 
       begin
-        bytes = Base64.strict_decode64(m)
+        bytes = Base64.strict_decode64(encoded)
       rescue ArgumentError
         return # not valid base64; ignore the frame and keep the connection
       end
 
       return if cap && bytes.bytesize > cap
 
-      sync_send_ack(id, sync_dispatch(m, bytes))
+      sync_send_ack(id, sync_dispatch(encoded, bytes))
     end
 
     # Route a decoded frame to the backend/path that handles it and return the
@@ -401,16 +400,14 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       )
     end
 
-    # Transmit raw protocol bytes to this connection (base64, dual-key).
+    # Transmit raw protocol bytes to this connection.
     def sync_transmit(bytes)
       transmit(sync_envelope(Base64.strict_encode64(bytes)))
     end
 
-    # Build an outgoing envelope. We send the payload under both keys: "m"
-    # (yrb-lite's own clients) and "update" (the @y-rb/actioncable provider),
-    # so either client works against the same server.
+    # Build an outgoing envelope.
     def sync_envelope(encoded, extra = {})
-      { "m" => encoded, "update" => encoded }.merge(extra)
+      { "update" => encoded }.merge(extra)
     end
 
     # Handle a broadcast delivered by the cable adapter. With a multi-process
@@ -418,7 +415,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # process. Keep this process's in-memory replica current with changes that
     # originated elsewhere, then relay to this connection's browser.
     def sync_on_broadcast(payload)
-      sync_apply_remote(payload["m"]) if payload["pid"] != Sync.process_id
+      sync_apply_remote(payload["update"]) if payload["pid"] != Sync.process_id
       transmit(payload) unless payload["origin"] == @sync_origin
     end
 
@@ -454,6 +451,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     def sync_for_store_backed
       sync_require_store_recorder!
       sync_stream sync_stream_name
+      sync_stream sync_awareness_stream_name, whisper: true if respond_to?(:whispers_to)
       sync_transmit(sync_load_doc.sync_step1)
     end
 
@@ -474,14 +472,11 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
             "persistence that never happened, and a cold load would lose the edit."
     end
 
-    # Subscribe to the document's broadcast stream. Under AnyCable (which adds a
-    # `whispers_to` method) this also enables client-to-client whispering on the
-    # stream, so a client that whispers awareness (any AnyCable consumer can)
-    # reaches other subscribers with no server round-trip. On plain ActionCable
-    # the option is omitted -- there's no whisper support -- so presence is
-    # server-relayed. It's automatic either way; nothing to configure.
+    # Subscribe to a broadcast stream. The document stream is never whisper-
+    # enabled; when AnyCable is present we separately subscribe an awareness
+    # stream with `whisper: true`, so the client-to-client fast path is scoped to
+    # ephemeral presence instead of the durable document stream.
     def sync_stream(name, **opts, &)
-      opts[:whisper] = true if respond_to?(:whispers_to)
       stream_from(name, **opts, &)
     end
 
@@ -560,6 +555,10 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
 
     def sync_stream_name
       "yrb_lite:#{@sync_key}"
+    end
+
+    def sync_awareness_stream_name
+      "#{sync_stream_name}:awareness"
     end
 
     def sync_persist
