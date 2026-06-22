@@ -6,6 +6,18 @@ this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Document streams and awareness streams are separate under AnyCable. Document
+  streams are normal server-relayed streams; awareness streams are subscribed
+  with `whisper: true` and carry only ephemeral presence frames.
+- The channel accepts and emits the canonical document envelope,
+  `{ "update" => "<base64 frame>" }`. Accepted document updates carrying an
+  `"id"` are acknowledged with `{ "ack" => id }`.
+- `sync_backend :store` fails closed unless both `on_load` and `on_change` are
+  configured, so store-backed acknowledgements always mean the update is
+  durably recorded.
+
 ## [0.1.0.beta2] - 2026-06-20
 
 ### Added

@@ -79,6 +79,15 @@ on separate streams, so the document stream is not whisper-enabled. Need a
 different transport or framing? Drop down to `YProtocolSession` and supply your
 own `send`.
 
+The provider uses one JSON envelope shape:
+
+```txt
+client -> server document frame      { update: "<base64 frame>", id: 42 }
+server -> client document frame      { update: "<base64 frame>" }
+server -> client acknowledgement     { ack: 42 }
+AnyCable awareness whisper           { awareness: "<base64 awareness frame>" }
+```
+
 ## YProtocolSession
 
 ```js
@@ -136,9 +145,8 @@ rs.onConnect();      // (re)connected — replay the tail, resume retransmits
 rs.onDisconnect();   // dropped — keep the queue, pause
 ```
 
-Pending updates are retained and replayed until the server acknowledges them. If
-no ack arrives, `ReliableSync` keeps retrying rather than downgrading document
-delivery to best-effort.
+Pending updates are retained and replayed until the server acknowledges them.
+Document delivery stays queued and ack-tracked for the lifetime of the session.
 
 ## How it fits
 

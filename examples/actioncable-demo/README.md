@@ -5,7 +5,7 @@ server. The Y.js sync protocol and awareness (shared cursors and presence) run
 natively in Ruby through [yrb-lite](../..).
 
 ```
-Browser (Tiptap + Yjs) ⇄ ActionCable ⇄ DocumentChannel (YrbLite::Sync)
+Browser (Tiptap + Yjs provider) ⇄ ActionCable ⇄ DocumentChannel (YrbLite::ActionCable::Sync)
 ```
 
 The server can read the document too. `GET /docs/:id/content` returns the live
@@ -35,11 +35,11 @@ is the whole integration:
 
 ```ruby
 class DocumentChannel < ApplicationCable::Channel
-  include YrbLite::Sync
+  include YrbLite::ActionCable::Sync
 
   def subscribed = sync_for(params[:id])
   def receive(data) = sync_receive(data)
-  def unsubscribed = sync_clear_presence
+  def unsubscribed = sync_unsubscribed(params[:id])
 end
 ```
 
@@ -48,17 +48,18 @@ document key. ActionCable's worker threads call into it concurrently, which is
 safe because yrb-lite's native types are `Send + Sync` and release the GVL
 during CRDT work. Add `on_load`/`on_save` callbacks to persist documents.
 
-The client uses the standard [`@y-rb/actioncable`](https://www.npmjs.com/package/@y-rb/actioncable)
-`WebsocketProvider`, not a hand-rolled one. yrb-lite's server speaks its wire
-format: it accepts the provider's `{ update: ... }` envelope (and its own
-`{ m: ... }`) and sends one protocol message per frame. Tiptap's Collaboration
-and CollaborationCursor extensions plug into it directly.
+The browser side uses the provider in
+[`frontend/provider/reliable_actioncable_provider.mjs`](frontend/provider/reliable_actioncable_provider.mjs).
+Tiptap's Collaboration and CollaborationCursor extensions plug into the
+provider's shared `Y.Doc` and `Awareness` directly. Document frames use the
+canonical `{ update, id }` envelope and are ack-tracked; awareness frames are
+ephemeral.
 
 ```js
 import { createConsumer } from "@rails/actioncable"
-import { WebsocketProvider } from "@y-rb/actioncable"
+import { ReliableActionCableProvider } from "./provider/reliable_actioncable_provider.mjs"
 
-const provider = new WebsocketProvider(ydoc, createConsumer(), "DocumentChannel", { id: documentId })
+const provider = new ReliableActionCableProvider(ydoc, createConsumer(), "DocumentChannel", { id: documentId })
 ```
 
 ## End-to-end test
@@ -75,14 +76,14 @@ propagation, byte-for-byte CRDT convergence, the server-side state read
 (`/content`), and presence reaping on disconnect (only the departed client's cursor
 clears, well under the client-side timeout).
 
-`bun provider_check.mjs` exercises the standard provider on its own: it drives
-the real `@y-rb/actioncable` `WebsocketProvider` against the server for document
-sync in both directions, presence, byte-for-byte convergence, and late-join.
+`bun reliable_provider.mjs` exercises the provider path on its own: document
+sync in both directions, presence, byte-for-byte convergence, ack-tracked
+delivery, and late-join.
 
 ### Real browser tests (Playwright)
 
-These drive actual Chrome windows running the real bundle (Tiptap plus the
-`@y-rb/actioncable` provider), the same stack a person uses. They run
+These drive actual Chrome windows running the real bundle (Tiptap plus the demo
+provider), the same stack a person uses. They run
 `playwright-core` against system Chrome, so there's no Chromium download. Pass
 `PORTS=3777,3778` to split browsers across two server processes.
 
@@ -240,7 +241,7 @@ AUDIT=1 SYNC_BACKEND=store CABLE_ADAPTER=any_cable bin/rails s -p 3777
 cd frontend
 WS_PORT=8080 HTTP_PORT=3777 bun anycable_probe.mjs
 WS_PORT=8080 HTTP_PORT=3777 CLIENTS=6 bun anycable_concurrent.mjs
-PORT=8080 bun provider_check.mjs   # the real @y-rb/actioncable provider
+PORT=8080 bun reliable_provider.mjs
 ```
 
 `anycable_probe.mjs` confirms liveness and that Puma's `/content` reflects the
@@ -294,8 +295,11 @@ clients, 8,800 edits, ~360k cable messages, 41k concurrent `/content` reads, all
 
 ## Production notes
 
-- Documents are held in memory per-process. The async cable adapter (and this
-  registry) assume a single server process; for multi-process deployments you'd
-  pin documents to a process or persist via `on_load`/`on_save`.
+- Use `sync_backend :store` with `on_load` and `on_change` for AnyCable and
+  multi-process deployments. The durable store is the source of truth; channel
+  instances are stateless per message.
+- The memory backend is useful for local ActionCable demos and single-process
+  experiments. A real multi-process deployment needs a shared cable adapter and
+  durable load/record hooks.
 - `config.action_cable.disable_request_forgery_protection` is on in development
   so the e2e script can connect without an Origin header.

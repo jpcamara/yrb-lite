@@ -6,6 +6,31 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `yrb-lite-client`, the TypeScript client package for the yrb-lite
+  ActionCable/AnyCable protocol. It provides `ActionCableProvider`,
+  `YProtocolSession`, and the standalone `ReliableSync` delivery core.
+
+### Changed
+
+- Document delivery is ack-tracked by default in `yrb-lite-client`: document
+  frames use `{ update, id }`, acknowledgements use `{ ack }`, and pending
+  document updates stay queued until acked.
+- The ActionCable protocol surface uses a single canonical document envelope:
+  `{ "update" => "<base64 frame>" }`.
+- AnyCable awareness/presence uses an awareness-only whisper envelope,
+  `{ awareness: "<base64 awareness frame>" }`, while document frames stay on
+  the server persistence/ack path.
+
+### Fixed
+
+- Incoming protocol frames are validated before mutating documents or awareness
+  state, including trailing-byte rejection on the TypeScript client.
+- Native/Rust protocol entry points reject wire client IDs that are unsafe for
+  JavaScript clients.
+- `lib0` is declared as a direct runtime dependency of `yrb-lite-client`.
+
 ## [0.1.0.beta5] - 2026-06-18
 
 ### Changed

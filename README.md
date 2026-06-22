@@ -232,6 +232,10 @@ end
 - A handshake (SyncStep1) is answered from the store. Changes are recorded, then
   broadcast. Nothing is held in Ruby between calls, so any worker can handle any
   message.
+- Document frames use the normal server path. Awareness/presence uses a
+  separate awareness stream with AnyCable `whisper: true`, so cursor traffic can
+  take the low-latency client-to-client path without bypassing document
+  durability.
 - Pass `params[:id]` into `sync_receive`/`sync_unsubscribed` so the document key
   survives AnyCable's per-command instances.
 - The sender gets its own updates echoed back (no Ruby callback to filter them).
@@ -298,49 +302,23 @@ alone rebuilds the document.
 
 #### Reliable delivery (acks)
 
-The y-websocket protocol is fire-and-forget. If a client's update is lost in
-transit (a flaky socket, a send that never lands) and the client makes no
-further edits, the server stays idle and never asks anyone to resync, so that
-edit is gone -- even though the client believes it was saved. CRDTs converge the
-state everyone *has*; they don't recover an update that never arrived.
-
-yrb-lite closes that gap with client-driven acknowledgements. Document updates
-carry an `"id"`, and the server replies `{ "ack": <id> }` once the update has
-been **accepted** -- recorded in audit mode, applied in fast mode. A
-causally-gapped update is not acked (it gets a resync instead), so the client
-knows it hasn't landed yet and keeps retransmitting.
+yrb-lite document delivery is ack-tracked. Browser document updates carry an
+`"id"`, and the server replies `{ "ack": <id> }` once the update has been
+**accepted** -- recorded in audit mode, applied in fast mode. A causally-gapped
+update is not acked; the server sends a resync request, and the client keeps the
+update queued until it lands.
 
 ```
 client -> server   { "update": "<base64 update>", "id": 42 }
 server -> client    { "ack": 42 }     # update accepted; safe to forget
 ```
 
-That's the whole server side. A reliable client tags each outgoing update with
-an incrementing id, keeps it in a pending buffer, and retransmits on a timer (and
-on reconnect) until the matching ack returns while ack tracking is active.
-Because CRDT apply is idempotent, a resend that already landed is a harmless
-no-op that just re-acks. An update lost in transit is recovered by the client's
-own retransmit -- no reconnect required, and no dependence on a later edit
-happening to trigger a resync.
-
-Two client examples ship in the demo:
-
-- [`frontend/reliable.mjs`](examples/actioncable-demo/frontend/reliable.mjs) — a
-  minimal reference client showing the raw mechanism (tag with an id, retain,
-  retransmit on a timer, drain on ack), with an end-to-end test that loses an
-  update mid-flight and recovers it purely by retransmit.
-- `yrb-lite-client`'s `ActionCableProvider` — the production provider for
-  ActionCable/AnyCable. It speaks the canonical yrb-lite envelope and adds
-  reliability with **sync-since-last-ack** framing: rather than retransmitting
-  updates one by one, it keeps the unacknowledged local updates in a queue and
-  sends their *merge* as a single causally-complete delta,
-  with the id being the highest sequence in the batch (so one `{ ack: id }`
-  cumulatively confirms everything up to it). Because the whole unacked tail goes
-  as one self-contained delta, the server never sees an internal gap and never
-  has to round-trip a resync for a lost middle update — the next edit, or the
-  next timer tick, carries it. Awareness stays fire-and-forget. Document updates
-  keep retransmitting until the server acks them. The demo's editor uses this
-  provider.
+`yrb-lite-client`'s `ActionCableProvider` handles this automatically. It keeps
+the unacknowledged local document tail in a queue and sends the merged tail as a
+single causally-complete delta. The id is the highest sequence in the batch, so
+one `{ ack: id }` cumulatively confirms everything up to it. Because CRDT apply
+is idempotent, a resend that already landed is a harmless no-op that just
+re-acks. Awareness stays ephemeral and is not acked.
 
 ### User Awareness/Presence
 
@@ -376,9 +354,9 @@ message = awareness.encode_update(update_bytes)
 
 ## Thread Safety
 
-Unlike the official `y-rb` gem, yrb-lite is safe to share across Ruby threads. A
-`Doc` or `Awareness` can be used concurrently from Puma workers, ActionCable
-connection threads, or background jobs without external locking.
+`Doc` and `Awareness` are safe to share across Ruby threads. A `Doc` or
+`Awareness` can be used concurrently from Puma workers, ActionCable connection
+threads, or background jobs without external locking.
 
 That comes from how the underlying types work, not from locking on top:
 
