@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build src/app.js --outfile ../public/app.js --minify",
-    "watch": "bun build src/app.js --outfile ../public/app.js --watch",
+    "build": "bun build.mjs",
+    "watch": "bun build.mjs --watch",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "agent-browser": "^0.28.0",
     "eslint": "^10.5.0",
     "globals": "^17.6.0",
     "playwright-core": "^1.60.0"

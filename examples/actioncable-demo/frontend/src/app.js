@@ -23,24 +23,39 @@ const consumer = createConsumer()
 const provider = new ActionCableProvider(ydoc, consumer, "DocumentChannel", { id: documentId })
 provider.connect()
 
+// Exposed for the browser console and the multi-browser test harness. The
+// editor is attached once the document has synced (see below).
+window.__yrb = { provider, ydoc, user, editor: null }
+
 statusEl.dataset.state = "connecting"
 statusEl.textContent = `connecting as ${user.name}…`
-const poll = setInterval(() => {
-  if (provider.synced) {
-    statusEl.dataset.state = "connected"
-    statusEl.textContent = `synced, editing as ${user.name}`
+
+// Create the editor only AFTER the initial sync. Tiptap's Collaboration
+// extension seeds an empty ProseMirror document (a single empty paragraph) into
+// the shared Y.Doc when it mounts; doing that before the server's state has
+// arrived makes every client insert its own competing top-level node, so remote
+// content gets clobbered the moment a second user edits. Mounting post-sync lets
+// the existing document bind cleanly and keeps concurrent edits convergent.
+function startEditor() {
+  const editor = new Editor({
+    element,
+    extensions: [
+      StarterKit.configure({ history: false }), // Collaboration brings its own undo
+      Collaboration.configure({ document: ydoc }),
+      CollaborationCursor.configure({ provider, user }),
+    ],
+  })
+  window.__yrb.editor = editor
+  statusEl.dataset.state = "connected"
+  statusEl.textContent = `synced, editing as ${user.name}`
+}
+
+if (provider.synced) {
+  startEditor()
+} else {
+  const poll = setInterval(() => {
+    if (!provider.synced) return
     clearInterval(poll)
-  }
-}, 150)
-
-const editor = new Editor({
-  element,
-  extensions: [
-    StarterKit.configure({ history: false }), // Collaboration brings its own undo
-    Collaboration.configure({ document: ydoc }),
-    CollaborationCursor.configure({ provider, user }),
-  ],
-})
-
-// Exposed for the browser console and the multi-browser test harness.
-window.__yrb = { provider, ydoc, editor, user }
+    startEditor()
+  }, 50)
+}
