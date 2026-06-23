@@ -10,7 +10,7 @@ class SyncTest < Minitest::Test
   end
 
   def update_message(update_bytes, id: nil)
-    frame = YrbLite::Awareness.new.encode_update(update_bytes)
+    frame = YrbLite.wrap_update(update_bytes)
     { "update" => Base64.strict_encode64(frame) }.tap do |payload|
       payload["id"] = id unless id.nil?
     end
@@ -106,7 +106,7 @@ class SyncTest < Minitest::Test
     response = Base64.strict_decode64(helper.transmits.first["update"])
 
     assert_equal YrbLite::ActionCable::Sync::MSG_KIND_SYNC_STEP1,
-                 YrbLite::Awareness.new.message_kind(response)
+                 YrbLite.message_kind(response)
   end
 
   def test_anycable_whisper_is_scoped_to_awareness_stream
@@ -130,7 +130,7 @@ class SyncTest < Minitest::Test
 
     assert_equal 1, transmits.length
     response = Base64.strict_decode64(transmits.first["update"])
-    delta = YrbLite::Awareness.new.update_from_message(response)
+    delta = YrbLite.update_from_message(response)
     rebuilt = YrbLite::Doc.new
     rebuilt.apply_update(delta)
 
@@ -287,10 +287,8 @@ class SyncTest < Minitest::Test
     recorded = []
     broadcasts = []
     helper = helper_for(recorder: ->(_key, update) { recorded << update }, broadcasts: broadcasts)
-    presence = YrbLite::Awareness.new
-    presence.set_local_state('{"user":"alice"}')
 
-    helper.sync_receive({ "update" => Base64.strict_encode64(presence.encode_awareness_update) }, "doc-key")
+    helper.sync_receive({ "update" => Base64.strict_encode64(YjsFixtures::Presence::FRAME) }, "doc-key")
 
     assert_empty recorded
     assert_equal 1, broadcasts.length

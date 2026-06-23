@@ -1,8 +1,7 @@
 use magnus::{
     function, method, prelude::*, Error, ExceptionClass, RString, Ruby, TryConvert, Value,
 };
-use std::sync::Mutex;
-use yrs::sync::{Awareness, Message, SyncMessage};
+use yrs::sync::{Message, SyncMessage};
 use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{Doc, ReadTxn, Transact};
@@ -20,28 +19,13 @@ use protocol::{classify_message, merged_doc_update, update_advances_doc, update_
 #[magnus::wrap(class = "YrbLite::Doc", free_immediately, size)]
 struct RbDoc(Doc);
 
-/// `YrbLite::Awareness`: local presence state, plus the protocol codec the
-/// ActionCable concern routes frames through (`encode_update`, `message_kind`,
-/// `update_from_message`).
-///
-/// Thread safety: as of yrs 0.27 `Awareness` is `Send` but no longer `Sync`
-/// (its mutating presence methods take `&mut self`), so we serialize access
-/// through a `Mutex`. That `Mutex` is ALWAYS locked inside the `nogvl` closure
-/// (never with the GVL held) and dropped before the closure returns -- the same
-/// rule as the doc's RwLock (see `nogvl`) -- so the GVL and this `Mutex` can't
-/// deadlock on lock order.
-#[magnus::wrap(class = "YrbLite::Awareness", free_immediately, size)]
-struct RbAwareness(Mutex<Awareness>);
-
-/// Compile-time proof that the wrapped types are thread-safe. If a future yrs
-/// upgrade makes Doc lose Send/Sync, or Awareness lose Send, this fails the
-/// build instead of silently shipping a thread-unsafe gem. (Awareness is no
-/// longer `Sync` as of yrs 0.27, hence the `Mutex` wrapper, which restores it.)
+/// Compile-time proof that the wrapped Doc is thread-safe. If a future yrs
+/// upgrade makes Doc lose Send/Sync, this fails the build instead of silently
+/// shipping a thread-unsafe gem.
 #[allow(dead_code)]
 fn assert_thread_safe() {
     fn is_send_sync<T: Send + Sync>() {}
     is_send_sync::<Doc>();
-    is_send_sync::<Mutex<Awareness>>();
 }
 
 /// Run `f` with the GVL (Global VM Lock) released, so other Ruby threads,
@@ -291,98 +275,43 @@ impl RbDoc {
 }
 
 // ============================================================================
-// Awareness Implementation (includes Doc + presence)
+// Protocol codec (stateless) -- exposed as `YrbLite` module functions
 // ============================================================================
+//
+// The server never holds presence or document state to classify a frame; these
+// are pure functions of their bytes. (Presence lives in the browser clients; the
+// server only relays awareness frames opaquely.)
 
-impl RbAwareness {
-    /// Create a new Awareness with an optional client_id.
-    fn new(args: &[Value]) -> Result<Self, Error> {
-        let awareness = if args.is_empty() {
-            Awareness::new(Doc::new())
-        } else {
-            let client_id: u64 = TryConvert::try_convert(args[0])?;
-            Awareness::new(Doc::with_client_id(client_id))
-        };
-        Ok(RbAwareness(Mutex::new(awareness)))
-    }
+/// Wrap a raw document update in a sync Update message frame, ready to relay.
+fn wrap_update(update: RString) -> RString {
+    let update_bytes = copy_bytes(update);
+    let msg = Message::Sync(SyncMessage::Update(update_bytes));
+    binary_string(&msg.encode_v1())
+}
 
-    /// Set local presence state (a JSON string).
-    fn set_local_state(&self, json: String) -> Result<(), Error> {
-        let value: serde_json::Value =
-            serde_json::from_str(&json).map_err(|e| yrb_error(e.to_string()))?;
-        let awareness = &self.0;
-        nogvl(move || -> Result<(), String> {
-            awareness
-                .lock()
-                .unwrap()
-                .set_local_state(value)
-                .map_err(|e| e.to_string())
-        })
-        .map_err(yrb_error)
-    }
+/// Classify a frame for safe routing and relay. Returns a code only when the
+/// frame is exactly one well-formed message that consumes the whole buffer, so
+/// a malformed, truncated, multi-message, or trailing-garbage frame (which a
+/// malicious client could craft to disrupt others if relayed) is rejected up
+/// front:
+///   0 = drop (malformed, multiple, unknown, or empty)
+///   1 = sync step1       (a request: respond, do not relay)
+///   2 = sync step2/update (a document change: record/apply/relay)
+///   3 = awareness        (presence: relay)
+///   4 = awareness query  (a request: respond, do not relay)
+fn message_kind(data: RString) -> u8 {
+    let data_bytes = copy_bytes(data);
+    nogvl(move || classify_message(&data_bytes))
+}
 
-    /// Local presence state as a JSON string (or nil if unset).
-    fn local_state(&self) -> Option<String> {
-        let awareness = &self.0;
-        nogvl(move || {
-            awareness
-                .lock()
-                .unwrap()
-                .local_state::<serde_json::Value>()
-                .map(|v| v.to_string())
-        })
-    }
-
-    /// Clear local presence state.
-    fn clear_local_state(&self) {
-        let awareness = &self.0;
-        nogvl(move || awareness.lock().unwrap().clean_local_state());
-    }
-
-    /// Encode our local presence as an awareness update frame for broadcast.
-    fn encode_awareness_update(&self) -> Result<RString, Error> {
-        let awareness = &self.0;
-        let encoded = nogvl(move || -> Result<Vec<u8>, String> {
-            let awareness = awareness.lock().unwrap();
-            let update = awareness.update().map_err(|e| e.to_string())?;
-            Ok(Message::Awareness(update).encode_v1())
-        })
-        .map_err(yrb_error)?;
-        Ok(binary_string(&encoded))
-    }
-
-    /// Wrap a raw document update in a sync Update message frame, ready to relay.
-    fn encode_update(&self, update: RString) -> RString {
-        let update_bytes = copy_bytes(update);
-        let msg = Message::Sync(SyncMessage::Update(update_bytes));
-        binary_string(&msg.encode_v1())
-    }
-
-    /// Classify a frame for safe routing and relay. Returns a code only when
-    /// the frame is exactly one well-formed message that consumes the whole
-    /// buffer, so a malformed, truncated, multi-message, or trailing-garbage
-    /// frame (which a malicious client could craft to disrupt others if
-    /// relayed) is rejected up front:
-    ///   0 = drop (malformed, multiple, unknown, or empty)
-    ///   1 = sync step1       (a request: respond, do not relay)
-    ///   2 = sync step2/update (a document change: record/apply/relay)
-    ///   3 = awareness        (presence: relay)
-    ///   4 = awareness query  (a request: respond, do not relay)
-    fn message_kind(&self, data: RString) -> u8 {
-        let data_bytes = copy_bytes(data);
-        nogvl(move || classify_message(&data_bytes))
-    }
-
-    /// Extract the document-update delta carried by a protocol message: the
-    /// payloads of any Update or SyncStep2 sub-messages, merged into a single
-    /// update. Returns nil if the message carries no document change (for
-    /// instance a SyncStep1 request or an awareness update). The store-backed
-    /// path records this exact delta before relaying it.
-    fn update_from_message(&self, data: RString) -> Result<Option<RString>, Error> {
-        let data_bytes = copy_bytes(data);
-        let merged = nogvl(move || merged_doc_update(&data_bytes)).map_err(yrb_error)?;
-        Ok(merged.map(|b| binary_string(&b)))
-    }
+/// Extract the document-update delta carried by a protocol message: the payloads
+/// of any Update or SyncStep2 sub-messages, merged into a single update. Returns
+/// nil if the message carries no document change (a SyncStep1 request or an
+/// awareness update). The store-backed path records this exact delta before relay.
+fn update_from_message(data: RString) -> Result<Option<RString>, Error> {
+    let data_bytes = copy_bytes(data);
+    let merged = nogvl(move || merged_doc_update(&data_bytes)).map_err(yrb_error)?;
+    Ok(merged.map(|b| binary_string(&b)))
 }
 
 // ============================================================================
@@ -419,25 +348,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         "handle_sync_message",
         method!(RbDoc::handle_sync_message, 1),
     )?;
-    // Define Awareness class (local presence + the protocol codec)
-    let awareness_class = module.define_class("Awareness", ruby.class_object())?;
-    awareness_class.define_singleton_method("new", function!(RbAwareness::new, -1))?;
-    awareness_class.define_method("set_local_state", method!(RbAwareness::set_local_state, 1))?;
-    awareness_class.define_method("local_state", method!(RbAwareness::local_state, 0))?;
-    awareness_class.define_method(
-        "clear_local_state",
-        method!(RbAwareness::clear_local_state, 0),
-    )?;
-    awareness_class.define_method(
-        "encode_awareness_update",
-        method!(RbAwareness::encode_awareness_update, 0),
-    )?;
-    awareness_class.define_method("encode_update", method!(RbAwareness::encode_update, 1))?;
-    awareness_class.define_method("message_kind", method!(RbAwareness::message_kind, 1))?;
-    awareness_class.define_method(
-        "update_from_message",
-        method!(RbAwareness::update_from_message, 1),
-    )?;
+    // Stateless protocol codec, as YrbLite module functions.
+    module.define_module_function("wrap_update", function!(wrap_update, 1))?;
+    module.define_module_function("message_kind", function!(message_kind, 1))?;
+    module.define_module_function("update_from_message", function!(update_from_message, 1))?;
 
     // Define message type constants
     module.const_set("MSG_SYNC", 0u8)?;

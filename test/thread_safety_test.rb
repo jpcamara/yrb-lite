@@ -86,7 +86,7 @@ class ThreadSafetyTest < Minitest::Test
     errors = run_threads do |i|
       update = sources[i % sources.length]
       ITERATIONS.times do
-        message = YrbLite::Awareness.new.encode_update(update)
+        message = YrbLite.wrap_update(update)
         shared.handle_sync_message(message)
       end
     end
@@ -100,24 +100,6 @@ class ThreadSafetyTest < Minitest::Test
 
     assert_equal sequential.encode_state_vector, shared.encode_state_vector
     assert_equal sequential.encode_state_as_update, shared.encode_state_as_update
-  end
-
-  def test_concurrent_awareness_state_changes
-    awareness = YrbLite::Awareness.new
-
-    errors = run_threads do |i|
-      ITERATIONS.times do |j|
-        awareness.set_local_state(JSON.generate({ "thread" => i, "tick" => j }))
-        awareness.local_state
-        awareness.encode_awareness_update
-      end
-    end
-
-    assert_empty errors
-    final = JSON.parse(awareness.local_state)
-
-    assert_includes 0...THREADS, final["thread"]
-    assert_equal ITERATIONS - 1, final["tick"]
   end
 
   private

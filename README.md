@@ -19,12 +19,12 @@ end
 
 On the browser, use the `yrb-lite-client` `ActionCableProvider`. Tiptap,
 ProseMirror, and BlockNote all sync through the `Y.Doc` you pass in and the
-provider's Awareness instance, unless you supply your own.
+provider's Awareness instance.
 
 ## What you get
 
-- Thread-safe Ruby wrappers for `Doc` and `Awareness`. You can share them
-  across Puma threads; native CRDT work runs with the GVL released.
+- A thread-safe Ruby `Doc` you can share across Puma threads; native CRDT work
+  runs with the GVL released.
 - The y-websocket protocol (document sync plus awareness/presence) as a
   one-include ActionCable concern.
 - Store-backed ActionCable/AnyCable delivery for multi-process deployments.
@@ -106,26 +106,17 @@ doc.sync_step2(state_vector)      # => SyncStep2 message (contains update)
 doc.handle_sync_message(data)     # => [msg_type, sync_type, response]
 ```
 
-### Awareness (presence + protocol codec)
+### Protocol codec (module functions)
 
-`YrbLite::Awareness` holds local presence state and is the protocol codec the
-ActionCable concern routes frames through. It does not mirror the document API —
-use `YrbLite::Doc` for document state.
+Classifying and unwrapping wire frames is stateless, so it's exposed as
+`YrbLite` module functions rather than a class. The server never holds presence
+or document state to route a frame — presence lives in the browser clients, and
+the server only relays awareness frames opaquely.
 
 ```ruby
-awareness = YrbLite::Awareness.new        # random client ID
-awareness = YrbLite::Awareness.new(12345) # specific client ID
-
-# Local presence
-awareness.set_local_state('{"cursor":{"x":10,"y":20}}')
-awareness.local_state                 # => JSON string, or nil if unset
-awareness.clear_local_state
-awareness.encode_awareness_update     # => an awareness update frame to broadcast
-
-# Protocol codec
-awareness.encode_update(update_bytes) # => wrap a doc update as a sync Update frame
-awareness.message_kind(frame)         # => 0 drop / 1 step1 / 2 update / 3 awareness / 4 query
-awareness.update_from_message(frame)  # => the document delta carried by a frame, or nil
+YrbLite.message_kind(frame)         # => 0 drop / 1 step1 / 2 update / 3 awareness / 4 query
+YrbLite.update_from_message(frame)  # => the document delta carried by a frame, or nil
+YrbLite.wrap_update(update_bytes)   # => wrap a raw doc update as a sync Update frame
 ```
 
 ### ActionCable Integration
@@ -291,43 +282,15 @@ one `{ ack: id }` cumulatively confirms everything up to it. Because CRDT apply
 is idempotent, a resend that already landed is a harmless no-op that just
 re-acks. Awareness stays ephemeral and is not acked.
 
-### User Awareness/Presence
-
-```ruby
-# Set local user state (cursor position, name, etc.)
-awareness.set_local_state('{"user": {"name": "Alice", "color": "#ff0000"}}')
-
-# Get local state
-awareness.local_state  # => '{"user": {"name": "Alice", "color": "#ff0000"}}'
-
-# Clear local state (e.g., when disconnecting)
-awareness.clear_local_state
-
-# Encode awareness update for broadcasting
-update = awareness.encode_awareness_update
-```
-
-### Low-Level Access
-
-```ruby
-# Get state vector for manual sync
-sv = awareness.encode_state_vector
-
-# Get update diffed against a state vector
-update = awareness.encode_state_as_update(remote_state_vector)
-
-# Apply raw update to the document
-awareness.apply_update(update_bytes)
-
-# Wrap raw update data in a sync message
-message = awareness.encode_update(update_bytes)
-```
+Presence (cursors, selections) is owned by the browser clients — the server
+never sets or holds presence state, it only relays awareness frames opaquely.
+See `yrb-lite-client` for the client-side awareness API.
 
 ## Thread Safety
 
-`Doc` and `Awareness` are safe to share across Ruby threads. A `Doc` or
-`Awareness` can be used concurrently from Puma workers, ActionCable connection
-threads, or background jobs without external locking.
+A `Doc` is safe to share across Ruby threads — used concurrently from Puma
+workers, ActionCable connection threads, or background jobs without external
+locking.
 
 That comes from how the underlying types work, not from locking on top:
 

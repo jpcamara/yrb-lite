@@ -37,15 +37,14 @@ class RobustnessTest < Minitest::Test
     assert_kind_of String, YrbLite::Doc.new.encode_state_vector
   end
 
-  def test_awareness_codec_methods_survive_garbage
+  def test_codec_functions_survive_garbage
     garbage_corpus.each do |bytes|
-      codec = YrbLite::Awareness.new
-      safe { codec.encode_update(bytes) }
-      safe { codec.update_from_message(bytes) }
-      safe { codec.message_kind(bytes) }
+      safe { YrbLite.wrap_update(bytes) }
+      safe { YrbLite.update_from_message(bytes) }
+      safe { YrbLite.message_kind(bytes) }
     end
 
-    assert_instance_of YrbLite::Awareness, YrbLite::Awareness.new
+    assert_equal 0, YrbLite.message_kind(""), "the codec still works after a garbage barrage"
   end
 
   def test_garbage_does_not_corrupt_a_good_document
@@ -74,26 +73,22 @@ class RobustnessTest < Minitest::Test
   end
 
   def test_message_kind_accepts_clean_messages_and_rejects_unsafe_frames
-    aw = YrbLite::Awareness.new
-
     # Valid, single, well-formed messages get a real kind.
-    assert_equal 1, aw.message_kind(YrbLite::Doc.new.sync_step1), "sync step1"
-    update = aw.encode_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
+    assert_equal 1, YrbLite.message_kind(YrbLite::Doc.new.sync_step1), "sync step1"
+    update = YrbLite.wrap_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
 
-    assert_equal 2, aw.message_kind(update), "document update"
-    presence = YrbLite::Awareness.new
-    presence.set_local_state('{"u":1}')
-    awareness_msg = presence.encode_awareness_update
+    assert_equal 2, YrbLite.message_kind(update), "document update"
+    awareness_msg = YjsFixtures::Presence::FRAME
 
-    assert_equal 3, aw.message_kind(awareness_msg), "awareness"
+    assert_equal 3, YrbLite.message_kind(awareness_msg), "awareness"
 
     # Anything an attacker could relay through must be dropped (0).
-    assert_equal 0, aw.message_kind(""), "empty"
-    assert_equal 0, aw.message_kind("\xff\xff\xff".b), "garbage"
-    assert_equal 0, aw.message_kind("\x63\x63\x63".b), "unknown type"
-    assert_equal 0, aw.message_kind(update + awareness_msg), "two messages packed together"
-    assert_equal 0, aw.message_kind(update + "\xde\xad".b), "trailing garbage"
-    assert_equal 0, aw.message_kind(update[0...(update.length / 2)]), "truncated message"
+    assert_equal 0, YrbLite.message_kind(""), "empty"
+    assert_equal 0, YrbLite.message_kind("\xff\xff\xff".b), "garbage"
+    assert_equal 0, YrbLite.message_kind("\x63\x63\x63".b), "unknown type"
+    assert_equal 0, YrbLite.message_kind(update + awareness_msg), "two messages packed together"
+    assert_equal 0, YrbLite.message_kind(update + "\xde\xad".b), "trailing garbage"
+    assert_equal 0, YrbLite.message_kind(update[0...(update.length / 2)]), "truncated message"
   end
 
   private

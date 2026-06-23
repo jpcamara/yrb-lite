@@ -227,13 +227,13 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     def sync_handle_frame(encoded, bytes)
       sync_require_store_recorder!
 
-      case Sync.codec.message_kind(bytes)
+      case YrbLite.message_kind(bytes)
       when MSG_KIND_SYNC_STEP1
         result = sync_load_doc.handle_sync_message(bytes)
         sync_transmit(result[2]) if result
         :noop
       when MSG_KIND_UPDATE
-        update = Sync.codec.update_from_message(bytes)
+        update = YrbLite.update_from_message(bytes)
         return :noop unless update
 
         Sync.lock_for(@sync_key).synchronize do
@@ -298,13 +298,6 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
         @process_id ||= SecureRandom.hex(8)
       end
 
-      # A shared, stateless decoder for the store-backed path. message_kind and
-      # update_from_message only read their argument (they don't touch the
-      # instance's document), so one shared instance is safe across threads.
-      def codec
-        @codec ||= YrbLite::Awareness.new
-      end
-
       # Per-document mutex serializing load -> record -> broadcast within this
       # process. The durable store remains the cross-process source of truth.
       # Only briefly holds the registry mutex to fetch/create the lock; the
@@ -313,12 +306,9 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
         @registry_mutex.synchronize { @locks[key] ||= Mutex.new }
       end
 
-      # Clear process-local locks and codec (useful for testing).
+      # Clear process-local locks (useful for testing).
       def reset!
-        @registry_mutex.synchronize do
-          @locks = {}
-          @codec = nil
-        end
+        @registry_mutex.synchronize { @locks = {} }
       end
     end
   end
