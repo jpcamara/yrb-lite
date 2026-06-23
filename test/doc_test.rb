@@ -97,15 +97,6 @@ class DocTest < Minitest::Test
     refute_empty response
   end
 
-  def test_encode_update_message
-    doc = YrbLite::Doc.new
-    update = doc.encode_state_as_update
-    message = doc.encode_update_message(update)
-
-    assert_kind_of String, message
-    refute_empty message
-  end
-
   def test_full_sync_exchange
     d1 = YrbLite::Doc.new(1)
     d2 = YrbLite::Doc.new(2)

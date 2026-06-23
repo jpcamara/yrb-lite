@@ -2,15 +2,13 @@ use magnus::{
     function, method, prelude::*, Error, ExceptionClass, RString, Ruby, TryConvert, Value,
 };
 use std::sync::Mutex;
-use yrs::sync::{Awareness, DefaultProtocol, Message, Protocol, SyncMessage};
+use yrs::sync::{Awareness, Message, SyncMessage};
 use yrs::updates::decoder::Decode;
-use yrs::updates::encoder::{Encode, Encoder, EncoderV1};
+use yrs::updates::encoder::Encode;
 use yrs::{Doc, ReadTxn, Transact};
 
 mod protocol;
-use protocol::{
-    classify_message, doc_has_pending, merged_doc_update, update_advances_doc, update_is_ready,
-};
+use protocol::{classify_message, merged_doc_update, update_advances_doc, update_is_ready};
 
 /// Wrapper around yrs Doc.
 ///
@@ -22,30 +20,21 @@ use protocol::{
 #[magnus::wrap(class = "YrbLite::Doc", free_immediately, size)]
 struct RbDoc(Doc);
 
-/// Wrapper around yrs Awareness (which contains a Doc).
+/// `YrbLite::Awareness`: local presence state, plus the protocol codec the
+/// ActionCable concern routes frames through (`encode_update`, `message_kind`,
+/// `update_from_message`).
 ///
-/// Thread safety: as of yrs 0.27 `Awareness` dropped its internal locking and
-/// its mutating methods (`handle`, `set_local_state`, `clean_local_state`,
-/// `remove_state`, `update_with_clients`) take `&mut self`. It is `Send` but no
-/// longer `Sync`, so we serialize all access through a `Mutex`.
-///
-/// CRITICAL: the `Mutex` is ALWAYS locked inside the `nogvl` closure (never with
-/// the GVL held) and the guard is dropped before the closure returns. This obeys
-/// the same rule as the doc's RwLock (see `nogvl`): a thread never waits on this
-/// lock while holding the GVL, and never reacquires the GVL while holding this
-/// lock, so the GVL and this `Mutex` can't deadlock on lock order. Locking with
-/// the GVL held (outside `nogvl`) reintroduces that deadlock -- don't.
-///
-/// For doc-only reads we clone the (Arc-backed) `Doc` out under the brief lock
-/// and operate on the owned clone, so a long encode holds only the doc's own
-/// RwLock, not this `Mutex`, and never blocks presence updates on another
-/// thread. Lock order is always Mutex-then-doc-RwLock (or doc-RwLock alone),
-/// never the reverse.
+/// Thread safety: as of yrs 0.27 `Awareness` is `Send` but no longer `Sync`
+/// (its mutating presence methods take `&mut self`), so we serialize access
+/// through a `Mutex`. That `Mutex` is ALWAYS locked inside the `nogvl` closure
+/// (never with the GVL held) and dropped before the closure returns -- the same
+/// rule as the doc's RwLock (see `nogvl`) -- so the GVL and this `Mutex` can't
+/// deadlock on lock order.
 #[magnus::wrap(class = "YrbLite::Awareness", free_immediately, size)]
 struct RbAwareness(Mutex<Awareness>);
 
-/// Compile-time proof that the wrapped types are thread-safe. If a future
-/// yrs upgrade makes Doc lose Send/Sync, or Awareness lose Send, this fails the
+/// Compile-time proof that the wrapped types are thread-safe. If a future yrs
+/// upgrade makes Doc lose Send/Sync, or Awareness lose Send, this fails the
 /// build instead of silently shipping a thread-unsafe gem. (Awareness is no
 /// longer `Sync` as of yrs 0.27, hence the `Mutex` wrapper, which restores it.)
 #[allow(dead_code)]
@@ -228,13 +217,6 @@ impl RbDoc {
         nogvl(move || update_advances_doc(doc, &update_bytes)).map_err(yrb_error)
     }
 
-    /// True if the document holds pending (un-integrable) structs waiting on a
-    /// missing dependency.
-    fn pending(&self) -> bool {
-        let doc = &self.0;
-        nogvl(move || doc_has_pending(doc))
-    }
-
     /// Sync step 1: Create a sync message with our state vector
     fn sync_step1(&self) -> RString {
         let doc = &self.0;
@@ -306,13 +288,6 @@ impl RbDoc {
 
         Ok(Some((msg_type, sync_type, binary_string(&response))))
     }
-
-    /// Encode raw update bytes as a sync Update message
-    fn encode_update_message(&self, update: RString) -> RString {
-        let update_bytes = copy_bytes(update);
-        let msg = Message::Sync(SyncMessage::Update(update_bytes));
-        binary_string(&msg.encode_v1())
-    }
 }
 
 // ============================================================================
@@ -320,7 +295,7 @@ impl RbDoc {
 // ============================================================================
 
 impl RbAwareness {
-    /// Create a new Awareness with an optional client_id
+    /// Create a new Awareness with an optional client_id.
     fn new(args: &[Value]) -> Result<Self, Error> {
         let awareness = if args.is_empty() {
             Awareness::new(Doc::new())
@@ -331,114 +306,7 @@ impl RbAwareness {
         Ok(RbAwareness(Mutex::new(awareness)))
     }
 
-    fn client_id(&self) -> u64 {
-        let awareness = &self.0;
-        nogvl(move || awareness.lock().unwrap().doc().client_id().get())
-    }
-
-    fn guid(&self) -> String {
-        let awareness = &self.0;
-        nogvl(move || awareness.lock().unwrap().doc().guid().to_string())
-    }
-
-    /// A standalone SyncStep1 message (the server's state vector). Sent as its
-    /// own frame in the opening handshake so providers that parse one message
-    /// per frame (e.g. @y-rb/actioncable) handle it correctly.
-    fn sync_step1(&self) -> RString {
-        let awareness = &self.0;
-        let encoded = nogvl(move || {
-            let doc = awareness.lock().unwrap().doc().clone();
-            let txn = doc.transact();
-            let sv = txn.state_vector();
-            Message::Sync(SyncMessage::SyncStep1(sv)).encode_v1()
-        });
-        binary_string(&encoded)
-    }
-
-    /// Create initial sync messages to send when connection opens.
-    /// Returns binary data containing SyncStep1 + Awareness update.
-    fn start(&self) -> Result<RString, Error> {
-        let awareness = &self.0;
-        let encoded = nogvl(move || -> Result<Vec<u8>, String> {
-            let awareness = awareness.lock().unwrap();
-            let protocol = DefaultProtocol;
-            let mut encoder = EncoderV1::new();
-            protocol
-                .start(&awareness, &mut encoder)
-                .map_err(|e| e.to_string())?;
-            Ok(encoder.to_vec())
-        })
-        .map_err(yrb_error)?;
-        Ok(binary_string(&encoded))
-    }
-
-    /// Handle incoming message and return response messages (if any).
-    /// Returns binary data containing response messages, or empty if no response needed.
-    fn handle(&self, data: RString) -> Result<RString, Error> {
-        let data_bytes = copy_bytes(data);
-        let awareness = &self.0;
-
-        let encoded = nogvl(move || -> Result<Vec<u8>, String> {
-            let mut awareness = awareness.lock().unwrap();
-            let protocol = DefaultProtocol;
-            let responses = protocol
-                .handle(&mut awareness, &data_bytes)
-                .map_err(|e| e.to_string())?;
-
-            if responses.is_empty() {
-                return Ok(Vec::new());
-            }
-
-            let mut encoder = EncoderV1::new();
-            for msg in responses {
-                msg.encode(&mut encoder);
-            }
-            Ok(encoder.to_vec())
-        })
-        .map_err(yrb_error)?;
-        Ok(binary_string(&encoded))
-    }
-
-    /// Encode an update message for broadcasting changes to peers.
-    fn encode_update(&self, update: RString) -> RString {
-        let update_bytes = copy_bytes(update);
-        let msg = Message::Sync(SyncMessage::Update(update_bytes));
-        binary_string(&msg.encode_v1())
-    }
-
-    fn encode_state_vector(&self) -> RString {
-        let awareness = &self.0;
-        let sv = nogvl(move || {
-            let doc = awareness.lock().unwrap().doc().clone();
-            let txn = doc.transact();
-            txn.state_vector().encode_v1()
-        });
-        binary_string(&sv)
-    }
-
-    /// Encode state as update (optionally diffed against a state vector)
-    fn encode_state_as_update(&self, args: &[Value]) -> Result<RString, Error> {
-        let sv_bytes: Option<Vec<u8>> = if args.is_empty() {
-            None
-        } else {
-            let sv_string: RString = TryConvert::try_convert(args[0])?;
-            Some(copy_bytes(sv_string))
-        };
-        let awareness = &self.0;
-        let update = nogvl(move || -> Result<Vec<u8>, String> {
-            let sv = match &sv_bytes {
-                None => yrs::StateVector::default(),
-                Some(bytes) => yrs::StateVector::decode_v1(bytes).map_err(|e| e.to_string())?,
-            };
-            let doc = awareness.lock().unwrap().doc().clone();
-            let txn = doc.transact();
-            Ok(txn.encode_state_as_update_v1(&sv))
-        })
-        .map_err(yrb_error)?;
-        Ok(binary_string(&update))
-    }
-
-    /// Set local awareness state (JSON string)
+    /// Set local presence state (a JSON string).
     fn set_local_state(&self, json: String) -> Result<(), Error> {
         let value: serde_json::Value =
             serde_json::from_str(&json).map_err(|e| yrb_error(e.to_string()))?;
@@ -453,7 +321,7 @@ impl RbAwareness {
         .map_err(yrb_error)
     }
 
-    /// Get local awareness state as JSON string (or nil if not set)
+    /// Local presence state as a JSON string (or nil if unset).
     fn local_state(&self) -> Option<String> {
         let awareness = &self.0;
         nogvl(move || {
@@ -465,13 +333,13 @@ impl RbAwareness {
         })
     }
 
-    /// Clear local awareness state
+    /// Clear local presence state.
     fn clear_local_state(&self) {
         let awareness = &self.0;
         nogvl(move || awareness.lock().unwrap().clean_local_state());
     }
 
-    /// Get awareness update for broadcasting to peers
+    /// Encode our local presence as an awareness update frame for broadcast.
     fn encode_awareness_update(&self) -> Result<RString, Error> {
         let awareness = &self.0;
         let encoded = nogvl(move || -> Result<Vec<u8>, String> {
@@ -483,51 +351,11 @@ impl RbAwareness {
         Ok(binary_string(&encoded))
     }
 
-    fn apply_update(&self, update: RString) -> Result<(), Error> {
+    /// Wrap a raw document update in a sync Update message frame, ready to relay.
+    fn encode_update(&self, update: RString) -> RString {
         let update_bytes = copy_bytes(update);
-        let awareness = &self.0;
-        nogvl(move || -> Result<(), String> {
-            let update = yrs::Update::decode_v1(&update_bytes).map_err(|e| e.to_string())?;
-            let doc = awareness.lock().unwrap().doc().clone();
-            let mut txn = doc.transact_mut();
-            txn.apply_update(update).map_err(|e| e.to_string())
-        })
-        .map_err(yrb_error)
-    }
-
-    /// True if applying `update` would integrate cleanly (its dependencies are
-    /// all present). False means it depends on a missing, causally-prior update.
-    /// Pure read; does not mutate.
-    fn update_ready(&self, update: RString) -> Result<bool, Error> {
-        let update_bytes = copy_bytes(update);
-        let awareness = &self.0;
-        nogvl(move || {
-            let doc = awareness.lock().unwrap().doc().clone();
-            update_is_ready(&doc, &update_bytes)
-        })
-        .map_err(yrb_error)
-    }
-
-    /// True if applying `update` would change the document, false if it's an
-    /// already-applied retry. See `update_advances_doc`. Pure read.
-    fn update_advances(&self, update: RString) -> Result<bool, Error> {
-        let update_bytes = copy_bytes(update);
-        let awareness = &self.0;
-        nogvl(move || {
-            let doc = awareness.lock().unwrap().doc().clone();
-            update_advances_doc(&doc, &update_bytes)
-        })
-        .map_err(yrb_error)
-    }
-
-    /// True if the document holds pending (un-integrable) structs waiting on a
-    /// missing dependency.
-    fn pending(&self) -> bool {
-        let awareness = &self.0;
-        nogvl(move || {
-            let doc = awareness.lock().unwrap().doc().clone();
-            doc_has_pending(&doc)
-        })
+        let msg = Message::Sync(SyncMessage::Update(update_bytes));
+        binary_string(&msg.encode_v1())
     }
 
     /// Classify a frame for safe routing and relay. Returns a code only when
@@ -585,39 +413,15 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     doc_class.define_method("apply_update", method!(RbDoc::apply_update, 1))?;
     doc_class.define_method("update_ready?", method!(RbDoc::update_ready, 1))?;
     doc_class.define_method("update_advances?", method!(RbDoc::update_advances, 1))?;
-    doc_class.define_method("pending?", method!(RbDoc::pending, 0))?;
     doc_class.define_method("sync_step1", method!(RbDoc::sync_step1, 0))?;
     doc_class.define_method("sync_step2", method!(RbDoc::sync_step2, 1))?;
     doc_class.define_method(
         "handle_sync_message",
         method!(RbDoc::handle_sync_message, 1),
     )?;
-    doc_class.define_method(
-        "encode_update_message",
-        method!(RbDoc::encode_update_message, 1),
-    )?;
-
-    // Define Awareness class
+    // Define Awareness class (local presence + the protocol codec)
     let awareness_class = module.define_class("Awareness", ruby.class_object())?;
     awareness_class.define_singleton_method("new", function!(RbAwareness::new, -1))?;
-    awareness_class.define_method("client_id", method!(RbAwareness::client_id, 0))?;
-    awareness_class.define_method("guid", method!(RbAwareness::guid, 0))?;
-    awareness_class.define_method("start", method!(RbAwareness::start, 0))?;
-    awareness_class.define_method("sync_step1", method!(RbAwareness::sync_step1, 0))?;
-    awareness_class.define_method("handle", method!(RbAwareness::handle, 1))?;
-    awareness_class.define_method("encode_update", method!(RbAwareness::encode_update, 1))?;
-    awareness_class.define_method(
-        "encode_state_vector",
-        method!(RbAwareness::encode_state_vector, 0),
-    )?;
-    awareness_class.define_method(
-        "encode_state_as_update",
-        method!(RbAwareness::encode_state_as_update, -1),
-    )?;
-    awareness_class.define_method("apply_update", method!(RbAwareness::apply_update, 1))?;
-    awareness_class.define_method("update_ready?", method!(RbAwareness::update_ready, 1))?;
-    awareness_class.define_method("update_advances?", method!(RbAwareness::update_advances, 1))?;
-    awareness_class.define_method("pending?", method!(RbAwareness::pending, 0))?;
     awareness_class.define_method("set_local_state", method!(RbAwareness::set_local_state, 1))?;
     awareness_class.define_method("local_state", method!(RbAwareness::local_state, 0))?;
     awareness_class.define_method(
@@ -628,11 +432,12 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         "encode_awareness_update",
         method!(RbAwareness::encode_awareness_update, 0),
     )?;
+    awareness_class.define_method("encode_update", method!(RbAwareness::encode_update, 1))?;
+    awareness_class.define_method("message_kind", method!(RbAwareness::message_kind, 1))?;
     awareness_class.define_method(
         "update_from_message",
         method!(RbAwareness::update_from_message, 1),
     )?;
-    awareness_class.define_method("message_kind", method!(RbAwareness::message_kind, 1))?;
 
     // Define message type constants
     module.const_set("MSG_SYNC", 0u8)?;

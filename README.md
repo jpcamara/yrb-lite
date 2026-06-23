@@ -104,32 +104,28 @@ doc.apply_update(update_bytes)    # apply raw V1 update
 doc.sync_step1                    # => SyncStep1 message (contains state vector)
 doc.sync_step2(state_vector)      # => SyncStep2 message (contains update)
 doc.handle_sync_message(data)     # => [msg_type, sync_type, response]
-doc.encode_update_message(update) # => wrap update as sync Update message
 ```
 
-### Awareness (Document + Presence)
+### Awareness (presence + protocol codec)
+
+`YrbLite::Awareness` holds local presence state and is the protocol codec the
+ActionCable concern routes frames through. It does not mirror the document API —
+use `YrbLite::Doc` for document state.
 
 ```ruby
-# Create awareness instances (each contains a Doc)
 awareness = YrbLite::Awareness.new        # random client ID
 awareness = YrbLite::Awareness.new(12345) # specific client ID
 
-# Get document info
-awareness.client_id  # => unique client identifier
-awareness.guid       # => document GUID
-```
+# Local presence
+awareness.set_local_state('{"cursor":{"x":10,"y":20}}')
+awareness.local_state                 # => JSON string, or nil if unset
+awareness.clear_local_state
+awareness.encode_awareness_update     # => an awareness update frame to broadcast
 
-### Handling Sync Messages
-
-```ruby
-# When connection opens, send initial sync messages
-initial_message = awareness.start
-# Send initial_message to peer via WebSocket
-
-# When receiving messages from peer
-response = awareness.handle(incoming_data)
-# Send response back to peer if not empty
-send_to_peer(response) unless response.empty?
+# Protocol codec
+awareness.encode_update(update_bytes) # => wrap a doc update as a sync Update frame
+awareness.message_kind(frame)         # => 0 drop / 1 step1 / 2 update / 3 awareness / 4 query
+awareness.update_from_message(frame)  # => the document delta carried by a frame, or nil
 ```
 
 ### ActionCable Integration

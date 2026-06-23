@@ -86,7 +86,7 @@ class ThreadSafetyTest < Minitest::Test
     errors = run_threads do |i|
       update = sources[i % sources.length]
       ITERATIONS.times do
-        message = shared.encode_update_message(update)
+        message = YrbLite::Awareness.new.encode_update(update)
         shared.handle_sync_message(message)
       end
     end
@@ -110,7 +110,6 @@ class ThreadSafetyTest < Minitest::Test
         awareness.set_local_state(JSON.generate({ "thread" => i, "tick" => j }))
         awareness.local_state
         awareness.encode_awareness_update
-        awareness.encode_state_vector
       end
     end
 

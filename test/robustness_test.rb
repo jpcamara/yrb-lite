@@ -32,23 +32,20 @@ class RobustnessTest < Minitest::Test
       safe { doc.apply_update(bytes) }
       safe { doc.sync_step2(bytes) }
       safe { doc.handle_sync_message(bytes) }
-      safe { doc.encode_update_message(bytes) }
     end
     # Reaching here means nothing crashed the process; the runtime still works.
     assert_kind_of String, YrbLite::Doc.new.encode_state_vector
   end
 
-  def test_awareness_methods_survive_garbage
+  def test_awareness_codec_methods_survive_garbage
     garbage_corpus.each do |bytes|
-      awareness = YrbLite::Awareness.new
-      safe { awareness.handle(bytes) }
-      safe { awareness.apply_update(bytes) }
-      safe { awareness.encode_update(bytes) }
-      safe { awareness.update_from_message(bytes) }
-      safe { awareness.set_local_state(bytes) }
+      codec = YrbLite::Awareness.new
+      safe { codec.encode_update(bytes) }
+      safe { codec.update_from_message(bytes) }
+      safe { codec.message_kind(bytes) }
     end
 
-    assert_kind_of Integer, YrbLite::Awareness.new.client_id
+    assert_instance_of YrbLite::Awareness, YrbLite::Awareness.new
   end
 
   def test_garbage_does_not_corrupt_a_good_document

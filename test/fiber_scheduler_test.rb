@@ -103,7 +103,7 @@ class FiberSchedulerTest < Minitest::Test
     ]
 
     errors = run_fibers do |i, _j|
-      message = shared.encode_update_message(sources[i % sources.length])
+      message = YrbLite::Awareness.new.encode_update(sources[i % sources.length])
       shared.handle_sync_message(message)
     end
 
@@ -122,7 +122,6 @@ class FiberSchedulerTest < Minitest::Test
       awareness.set_local_state(JSON.generate({ "fiber" => i, "tick" => j }))
       awareness.local_state
       awareness.encode_awareness_update
-      awareness.encode_state_vector
     end
 
     assert_empty errors
