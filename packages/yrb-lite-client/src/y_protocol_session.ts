@@ -30,22 +30,14 @@ import { ReliableSync, type TimerHandle } from "./reliable_sync.js";
 
 export const MessageType = { Sync: 0, Awareness: 1, Auth: 2, QueryAwareness: 3 } as const;
 
-/** Hints about an outgoing frame, so the transport can route it appropriately. */
-export interface SendOptions {
-  /**
-   * True for awareness/presence frames. These are ephemeral and fire-and-forget,
-   * so transports can route, throttle, or observe them separately if needed.
-   */
-  awareness?: boolean;
-}
-
 export interface YProtocolSessionOptions {
   /**
    * Transmit one raw protocol frame. `id` is set only for reliable document
-   * updates (tag it onto your envelope so the server can ack). `opts.awareness`
-   * marks presence frames for transports that treat them separately.
+   * updates (tag it onto your envelope so the server can ack). Awareness frames
+   * are identifiable by their first byte (`MessageType.Awareness`) if a transport
+   * needs to route them separately.
    */
-  send: (frame: Uint8Array, id: number | undefined, opts?: SendOptions) => void;
+  send: (frame: Uint8Array, id: number | undefined) => void;
   /** Optional awareness/presence. When omitted, awareness frames are ignored. */
   awareness?: Awareness | null;
   /** Forwarded to ReliableSync. */
@@ -114,7 +106,7 @@ export class YProtocolSession {
         // broadcast tombstones for other clients' cursors.
         if (origin === this) return;
         const changed = added.concat(updated, removed);
-        this.#send(this.#frameAwareness(changed), undefined, { awareness: true }); // fire-and-forget
+        this.#send(this.#frameAwareness(changed), undefined); // fire-and-forget
       };
       this.awareness.on("update", this.#onAwarenessUpdate);
     }
@@ -134,7 +126,7 @@ export class YProtocolSession {
   onConnect(): void {
     this.#send(this.#frameSyncStep1(), undefined);
     if (this.awareness && this.awareness.getLocalState() !== null) {
-      this.#send(this.#frameAwareness([this.doc.clientID]), undefined, { awareness: true });
+      this.#send(this.#frameAwareness([this.doc.clientID]), undefined);
     }
     this.#delivery.onConnect();
   }

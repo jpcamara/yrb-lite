@@ -51,7 +51,7 @@ const provider = new ActionCableProvider(doc, consumer, "DocumentChannel", { id:
 provider.connect(); // does not auto-connect — wire your editor binding first
 
 // Observe the connection (one signal, no separate "sync" event):
-provider.on("status", ({ status }) => render(status));
+provider.onStatusChange(({ status }) => render(status)); // returns an unsubscribe fn
 //   "connecting"  -> subscription created, transport not up yet
 //   "connected"   -> transport up, exchanging sync steps (show "syncing")
 //   "synced"      -> caught up with the server
@@ -59,7 +59,7 @@ provider.on("status", ({ status }) => render(status));
 //                    (a dropped transport ActionCable will retry shows as "connecting")
 
 // provider.status     -> the current status (same union as above)
-// provider.awareness  -> the Awareness instance (a fresh one unless you pass opts.awareness)
+// provider.awareness  -> the provider's Awareness instance (always a fresh one)
 // provider.synced     -> caught up with the server
 // provider.hasPending -> unacked local edits in flight
 // provider.destroy()  -> tear down
