@@ -115,8 +115,9 @@ pub(crate) fn update_advances_doc(doc: &Doc, update_bytes: &[u8]) -> Result<bool
 }
 
 /// True if the doc holds pending structs or a pending delete set -- blocks that
-/// couldn't integrate because a dependency is missing. Used as a backstop after
-/// loading from storage: leftover pending means the stored log has a causal gap.
+/// couldn't integrate because a dependency is missing. Test-only: asserts the
+/// causal-chain parking behavior in the unit tests below.
+#[cfg(test)]
 pub(crate) fn doc_has_pending(doc: &Doc) -> bool {
     let txn = doc.transact();
     txn.store().pending_update().is_some() || txn.store().pending_ds().is_some()

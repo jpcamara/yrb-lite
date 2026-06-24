@@ -137,23 +137,21 @@ test("two engines converge end-to-end through a relay", () => {
   b.destroy();
 });
 
-test("awareness frames are flagged { awareness: true } on the send callback; doc frames are not", () => {
+test("presence frames as Awareness, doc updates as Sync (the first byte identifies them)", () => {
   const doc = new Y.Doc();
   const awA = new Awareness(doc);
-  const sends = []; // [{ type, awareness }]
+  const types = []; // frame[0] of each outgoing frame
   const eng = new YProtocolSession(doc, {
     awareness: awA,
     ...noTimers,
-    send: (frame, _id, opts) => sends.push({ type: frameType(frame), awareness: !!(opts && opts.awareness) }),
+    send: (frame) => types.push(frameType(frame)),
   });
   eng.onConnect();
   doc.getText("t").insert(0, "hi"); // document update
   awA.setLocalStateField("user", "alice"); // presence
 
-  const sync = sends.filter((s) => s.type === MSG.Sync);
-  const awareness = sends.filter((s) => s.type === MSG.Awareness);
-  assert.ok(sync.length >= 1 && sync.every((s) => s.awareness === false), "Sync frames are NOT flagged awareness");
-  assert.ok(awareness.length >= 1 && awareness.every((s) => s.awareness === true), "Awareness frames ARE flagged");
+  assert.ok(types.includes(MSG.Sync), "a document update frames as Sync");
+  assert.ok(types.includes(MSG.Awareness), "a presence change frames as Awareness");
 
   eng.destroy();
   awA.destroy();

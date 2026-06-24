@@ -130,7 +130,7 @@ test("status walks connecting -> connected -> synced -> disconnected", (t) => {
   const c = fakeConsumer();
   const p = makeProvider(t, doc, c, { id: "s1" });
   const seen = [];
-  p.on("status", ({ status }) => seen.push(status));
+  p.onStatusChange(({ status }) => seen.push(status));
 
   assert.equal(p.status, "disconnected", "starts disconnected");
   p.connect();
@@ -155,16 +155,15 @@ test("a dropped transport (ActionCable will retry) shows as connecting, not disc
   assert.equal(p.status, "connecting", "subscription still set -> retrying, not torn down");
 });
 
-test("off() removes a status listener", (t) => {
+test("the returned unsubscribe stops a status listener", (t) => {
   const c = fakeConsumer();
   const p = makeProvider(t, new Y.Doc(), c, { id: "s3" });
   const seen = [];
-  const listener = ({ status }) => seen.push(status);
-  p.on("status", listener);
+  const unsubscribe = p.onStatusChange(({ status }) => seen.push(status));
   p.connect();
-  p.off("status", listener);
+  unsubscribe();
   c.deliverConnected();
-  assert.deepEqual(seen, ["connecting"], "no events after off()");
+  assert.deepEqual(seen, ["connecting"], "no events after unsubscribe");
 });
 
 test("disconnect() broadcasts a presence removal while the transport is still live", async (t) => {
@@ -218,21 +217,9 @@ test("destroy() tears down the Awareness it created, but not a caller-supplied o
   mine.destroy(); // cleanup the reaper interval
 });
 
-test("awareness: null disables it; undefined creates an owned one", (t) => {
-  const c = fakeConsumer({ withWhisper: true });
-  const disabled = new ActionCableProvider(new Y.Doc(), c, "DocumentChannel", { id: "a1" }, { awareness: null });
-  assert.equal(disabled.awareness, null, "null disables awareness");
-  disabled.connect();
-  c.deliverConnected();
-  disabled.disconnect(); // no presence removal possible
-  const anyAwareness = [...c.calls.send, ...c.calls.whisper].some(
-    (m) => frameTypeOf(m.update) === MessageType.Awareness
-  );
-  assert.equal(anyAwareness, false, "no awareness traffic at all when disabled");
-  disabled.destroy(); // must not throw on a null awareness
-
+test("the provider creates and owns an Awareness", (t) => {
   const owned = makeProvider(t, new Y.Doc(), fakeConsumer(), { id: "a2" });
-  assert.ok(owned.awareness instanceof Awareness, "undefined creates an owned Awareness");
+  assert.ok(owned.awareness instanceof Awareness, "the provider owns a fresh Awareness");
 });
 
 test("a browser pagehide broadcasts a best-effort presence removal", (t) => {

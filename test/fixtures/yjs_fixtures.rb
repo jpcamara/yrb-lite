@@ -63,4 +63,13 @@ module YjsFixtures
       YjsFixtures.b64("AQEFAAQBB2NvbnRlbnQQY2xpZW50LTUtY29udGVudAA=")
     ].freeze
   end
+
+  # Fixture 7: a valid awareness (presence) message frame -- client 42 with a
+  # user + cursor. The server only ever relays such frames opaquely
+  # (message_kind => 3); it never originates presence. So tests use this canned
+  # frame instead of generating one server-side. Captured once from a client
+  # Awareness's encode_awareness_update.
+  module Presence
+    FRAME = YjsFixtures.b64("AS0BKgEpeyJjdXJzb3IiOnsieCI6MTAsInkiOjIwfSwidXNlciI6ImFsaWNlIn0=")
+  end
 end

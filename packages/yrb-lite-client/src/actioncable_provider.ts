@@ -16,7 +16,7 @@
 // getter. On `disconnect()` / `destroy()` -- and on browser `pagehide` -- the
 // provider broadcasts a presence removal so peers drop our cursor immediately
 // instead of waiting for the awareness timeout.
-import { YProtocolSession, MessageType, type YProtocolSessionOptions, type SendOptions } from "./y_protocol_session.js";
+import { YProtocolSession, MessageType, type YProtocolSessionOptions } from "./y_protocol_session.js";
 import { toBase64, fromBase64 } from "./base64.js";
 import { Awareness } from "y-protocols/awareness";
 import type { Doc } from "yjs";
@@ -52,15 +52,7 @@ export interface CableConsumer {
   };
 }
 
-export interface ActionCableProviderOptions
-  extends Pick<YProtocolSessionOptions, "resendInterval" | "onError"> {
-  /**
-   * Awareness/presence instance. Omit (`undefined`) for a fresh
-   * `new Awareness(doc)` the provider owns; pass `null` to disable awareness
-   * entirely; pass your own to share one you manage.
-   */
-  awareness?: Awareness | null;
-}
+export type ActionCableProviderOptions = Pick<YProtocolSessionOptions, "resendInterval" | "onError">;
 
 interface CableMessage {
   update?: string;
@@ -73,11 +65,10 @@ export class ActionCableProvider {
   readonly consumer: CableConsumer;
   readonly channelName: string;
   readonly channelParams: object;
-  readonly awareness: Awareness | null;
+  readonly awareness: Awareness;
   readonly session: YProtocolSession;
   #subscription: CableSubscription | null = null;
   #onError: (error: unknown, context: string) => void;
-  #ownsAwareness: boolean;
   #connected = false;
   #status: ProviderStatus = "disconnected";
   #statusListeners = new Set<(event: StatusEvent) => void>();
@@ -94,16 +85,14 @@ export class ActionCableProvider {
     this.consumer = consumer;
     this.channelName = channelName;
     this.channelParams = channelParams;
-    // undefined -> create one we own; null -> awareness disabled; value -> borrowed.
-    this.#ownsAwareness = opts.awareness === undefined;
-    this.awareness = opts.awareness === undefined ? new Awareness(doc) : opts.awareness;
+    this.awareness = new Awareness(doc);
     this.#onError = opts.onError ?? ((error, context) => console.warn(`[yrb-lite] ${context}:`, error));
 
     this.session = new YProtocolSession(doc, {
       awareness: this.awareness,
       resendInterval: opts.resendInterval,
       onError: this.#onError,
-      send: (frame, id, sendOpts) => this.#send(frame, id, sendOpts),
+      send: (frame, id) => this.#send(frame, id),
     });
   }
 
@@ -123,15 +112,9 @@ export class ActionCableProvider {
   }
 
   /** Subscribe to status changes. Returns an unsubscribe function. */
-  on(event: "status", listener: (event: StatusEvent) => void): () => void {
-    if (event !== "status") return () => {};
+  onStatusChange(listener: (event: StatusEvent) => void): () => void {
     this.#statusListeners.add(listener);
     return () => this.#statusListeners.delete(listener);
-  }
-
-  /** Remove a previously-registered status listener. */
-  off(event: "status", listener: (event: StatusEvent) => void): void {
-    if (event === "status") this.#statusListeners.delete(listener);
   }
 
   connect(): void {
@@ -200,9 +183,7 @@ export class ActionCableProvider {
   destroy(): void {
     this.disconnect();
     this.session.destroy();
-    // Only tear down the Awareness if we created it; a caller-supplied one is
-    // theirs to own (and destroying it stops its reaper timer either way).
-    if (this.#ownsAwareness && this.awareness) this.awareness.destroy();
+    this.awareness.destroy(); // stops its reaper timer
     this.#statusListeners.clear();
   }
 
@@ -240,11 +221,11 @@ export class ActionCableProvider {
   // normal send. `id` (reliable doc updates) is tagged onto the envelope so the
   // server can ack. A no-op while disconnected: reliable frames stay queued in
   // the session and flush on the next connect().
-  #send(frame: Uint8Array, id: number | undefined, opts?: SendOptions): void {
+  #send(frame: Uint8Array, id: number | undefined): void {
     const sub = this.#subscription;
     if (!sub) return;
     const update = toBase64(frame);
-    const isAwareness = opts?.awareness ?? frame[0] === MessageType.Awareness;
+    const isAwareness = frame[0] === MessageType.Awareness;
     if (isAwareness && typeof sub.whisper === "function") {
       sub.whisper({ awareness: update });
       return;
