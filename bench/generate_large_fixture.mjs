@@ -22,7 +22,7 @@ doc.transact(() => {
     let text = `Paragraph ${i}: `
     for (let w = 0; w < 30; w++) text += WORDS[(i + w) % WORDS.length] + ' '
     t.insert(0, text)
-    // sprinkle some formatting so extraction exercises mark handling
+    // add some formatting so extraction exercises mark handling
     t.format(11, 8, { bold: true })
     t.format(25, 6, { italic: true })
     p.insert(0, [t])

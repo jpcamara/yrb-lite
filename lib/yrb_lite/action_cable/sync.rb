@@ -173,7 +173,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       return if id.nil?
       return unless %i[recorded applied].include?(outcome)
 
-      # Braces are load-bearing: a bare hash would bind to transmit's `via:`
+      # The braces are required: a bare hash would bind to transmit's `via:`
       # keyword instead of its positional data argument.
       transmit({ "ack" => id })
     end
