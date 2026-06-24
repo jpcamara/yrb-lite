@@ -148,8 +148,8 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       sync_send_ack(id, sync_handle_frame(encoded, bytes))
     end
 
-    # Kept as the ActionCable lifecycle hook target. There is no cached document
-    # or server-owned presence state to clean up in the store-backed design.
+    # The `unsubscribed` hook target. Nothing to clean up: the server keeps no
+    # per-connection document or presence state.
     def sync_unsubscribed(key = nil)
       @sync_key = key.to_s if key
     end
@@ -215,11 +215,10 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
             "that never happened, and a cold load would lose the edit."
     end
 
-    # Stateless per message: no warm replica, no assumptions about which process
-    # owns a document. A client's SyncStep1 is answered from the store, document
-    # changes are recorded durably before relay and then broadcast, and
-    # awareness is relayed best-effort. Echoing back to the sender is harmless,
-    # since the CRDT apply is idempotent.
+    # Stateless per message: any process can handle any document. A client's
+    # SyncStep1 is answered from the store, document changes are recorded durably
+    # before relay and then broadcast, and awareness is relayed best-effort.
+    # Echoing back to the sender is harmless, since the CRDT apply is idempotent.
     #
     # Returns an outcome symbol for the reliable-delivery ack: :recorded when a
     # document update was durably recorded and relayed, :gap when it was
