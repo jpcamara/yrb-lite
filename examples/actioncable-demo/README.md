@@ -85,40 +85,34 @@ clears, well under the client-side timeout).
 sync in both directions, presence, byte-for-byte convergence, ack-tracked
 delivery, and late-join.
 
-### Real browser tests (Playwright)
+### Real browser tests (agent-browser)
 
-These drive actual Chrome windows running the real bundle (Tiptap plus the demo
-provider), the same stack a person uses. They run
-`playwright-core` against system Chrome, so there's no Chromium download. Pass
-`PORTS=3777,3778` to split browsers across two server processes.
-
-```bash
-bin/rails s -p 3777
-cd frontend && bun multi_browser.mjs   # 4 browsers: round-trip, presence,
-                                       # late-join, reload/reconnect, storm
-bun four_browsers.mjs                  # 4 browsers typing at once, per-keystroke
-                                       # accounting (incl. same-position storm)
-```
-
-`four_browsers.mjs` has each browser type its own digit at the same time, then
-checks that every browser's document is identical and that every keystroke
-survived (counted per contributor), including a round where all four type at the
-same position. It's been run single-process and across two Redis-backed
-processes.
-
-`agent_browsers.mjs` is the same idea driven through
-[agent-browser](https://www.npmjs.com/package/agent-browser) instead of
-Playwright — four real Chrome instances in separate sessions typing into one doc
-at once — and additionally asserts the durable store reflects every keystroke.
-This is the one that runs in CI; unlike the headless suites it exercises the
-real Tiptap ↔ provider editor binding, so it catches bundle-level regressions
-(e.g. a duplicate `yjs` copy) the protocol-only tests can't. agent-browser is a
-frontend devDependency, so no extra setup:
+These drive real Chrome instances running the actual bundle (Tiptap plus the demo
+provider) — the same stack a person uses — via
+[agent-browser](https://www.npmjs.com/package/agent-browser), each browser an
+isolated user in its own session. Unlike the headless raw-WebSocket suites they
+exercise the real Tiptap ↔ provider editor binding, so they catch bundle-level
+regressions (e.g. a duplicate `yjs` copy) the protocol-only tests can't.
+agent-browser is a frontend devDependency, so no extra setup; both run in CI on
+the Puma cluster.
 
 ```bash
 bin/rails s -p 3777
-cd frontend && PORT=3777 BROWSERS=4 PER=15 node agent_browsers.mjs
+cd frontend
+PORT=3777 BROWSERS=4 PER=15 node agent_browsers.mjs   # concurrent typing
+PORT=3777 node agent_collab.mjs                       # rich text + cursors
 ```
+
+`agent_browsers.mjs` has four real browsers type their own digit into one doc at
+the same time (including a same-position storm), then asserts every browser's
+document is identical, every keystroke survived (counted per contributor), and
+the durable store reflects them all.
+
+`agent_collab.mjs` covers the harder multi-user cases: concurrent rich-text
+merges (bold / italic / heading applied at once, converging with every mark and
+block type preserved) and cursor/presence fidelity — named remote carets,
+selection highlights, a caret surviving a concurrent edit by someone else, and
+presence reaping when a user disconnects.
 
 ### Fiber scheduler (Falcon)
 
@@ -315,14 +309,14 @@ and a failing store. It uses the audit fault controls, which are file-based so
 they work across the Puma and RPC processes.
 
 Real browsers through AnyCable: set `CABLE_URL` so the page points the browser
-at anycable-go (`action_cable_meta_tag` emits it), then run the Playwright
+at anycable-go (`action_cable_meta_tag` emits it), then run the agent-browser
 suites against the Puma page port. The WebSockets go to anycable-go:
 
 ```bash
 CABLE_ADAPTER=any_cable \
   CABLE_URL=ws://localhost:8080/cable bin/rails s -p 3777
-cd frontend && PORTS=3777 bun multi_browser.mjs   # all scenarios
-PORTS=3777 bun four_browsers.mjs                  # 4 browsers typing at once
+cd frontend && PORT=3777 node agent_browsers.mjs   # concurrent typing
+PORT=3777 node agent_collab.mjs                     # rich text + cursors
 ```
 
 ## Stress test
