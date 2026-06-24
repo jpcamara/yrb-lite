@@ -25,7 +25,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
   #     on_change { |key, update| Document.record!(key, update, by: current_user) }
   #
   #     def subscribed
-  #       sync_for params[:id]
+  #       sync_subscribed params[:id]
   #     end
   #
   #     def receive(data)
@@ -59,8 +59,8 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
 
     module ClassMethods
       # Load persisted document state. Called once per key with (key); return a
-      # binary Y.js update (or nil for a fresh document). The block runs in the
-      # channel instance's context, the same as on_change (see below).
+      # binary Y.js update (or nil for a fresh document). Runs in the channel
+      # instance's context (instance_exec).
       def on_load(&block)
         @on_load = block if block
         return @on_load if defined?(@on_load) && @on_load
@@ -73,10 +73,8 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       # the exact CRDT delta. If the block raises, the change is rejected:
       # neither acknowledged nor broadcast to other subscribers.
       #
-      # The block runs in the *channel instance's* context (via instance_exec),
-      # so it can call the channel's own methods (current_user, params, a
-      # per-connection Current.* accessor) directly, with no thread-local
-      # plumbing. on_change always fires from within sync_receive.
+      # Runs in the channel instance's context (instance_exec). Fires from within
+      # sync_receive.
       def on_change(&block)
         @on_change = block if block
         return @on_change if defined?(@on_change) && @on_change
@@ -89,6 +87,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       # parsing, so a client can't force huge allocations/CPU (a DoS vector).
       # Defaults to DEFAULT_MAX_FRAME_BYTES; set to nil to disable the cap.
       def max_frame_bytes(bytes = :__unset__)
+        # Combined reader/writer; the sentinel keeps nil a real value (disables the cap).
         @max_frame_bytes = bytes unless bytes == :__unset__
         return @max_frame_bytes if defined?(@max_frame_bytes)
 
@@ -98,10 +97,10 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
 
     # Call from `subscribed`. Streams broadcasts for this document and
     # transmits the server's opening handshake (SyncStep1 from the store).
-    def sync_for(key)
+    def sync_subscribed(key)
       @sync_key = key.to_s
       @sync_origin = SecureRandom.hex(8)
-      sync_require_store_recorder!
+      sync_validate_required_hooks!
 
       # The document stream is never whisper-enabled; under AnyCable we also
       # subscribe an awareness stream with `whisper: true`, scoping the client-to-
@@ -203,7 +202,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # actually persist before acking). Fail closed rather than silently acking
     # and broadcasting updates that were never stored -- which a cold load or
     # reconnect would then lose.
-    def sync_require_store_recorder!
+    def sync_validate_required_hooks!
       missing = []
       missing << :on_load unless self.class.on_load
       missing << :on_change unless self.class.on_change
@@ -224,7 +223,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # document update was durably recorded and relayed, :gap when it was
     # rejected for a resync, :noop for everything else.
     def sync_handle_frame(encoded, bytes)
-      sync_require_store_recorder!
+      sync_validate_required_hooks!
 
       case YrbLite.message_kind(bytes)
       when MSG_KIND_SYNC_STEP1

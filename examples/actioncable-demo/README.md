@@ -44,7 +44,7 @@ class DocumentChannel < ApplicationCable::Channel
   on_load  { |key| Store.current.replay(key) }
   on_change { |key, update| Store.current.record(key, update) }
 
-  def subscribed = sync_for(params[:id])
+  def subscribed = sync_subscribed(params[:id])
   def receive(data) = sync_receive(data, params[:id])
   def unsubscribed = sync_unsubscribed(params[:id])
 end

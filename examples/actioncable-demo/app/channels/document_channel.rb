@@ -12,7 +12,7 @@ class DocumentChannel < ApplicationCable::Channel
   # Pass params[:id] on every action so the channel works under AnyCable too,
   # where each RPC command gets a fresh channel instance (no ivars persist).
   def subscribed
-    sync_for params[:id]
+    sync_subscribed params[:id]
   end
 
   def receive(data)

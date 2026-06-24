@@ -11,7 +11,7 @@ documents.
 class DocumentChannel < ApplicationCable::Channel
   include YrbLite::ActionCable::Sync
 
-  def subscribed   = sync_for(params[:id])
+  def subscribed   = sync_subscribed(params[:id])
   def receive(data) = sync_receive(data)
   def unsubscribed = sync_unsubscribed(params[:id])
 end
@@ -130,7 +130,7 @@ class DocumentChannel < ApplicationCable::Channel
   on_change { |key, update| MyStore.append(key, update) } # durable record
 
   def subscribed
-    sync_for params[:id]
+    sync_subscribed params[:id]
   end
 
   def receive(data)
@@ -182,6 +182,15 @@ servers:
   idempotent** if duplicate side effects would matter (a webhook, a counter) — a
   raw append-only delta log is naturally fine, since it replays to the same
   document either way.
+- **A raising `on_change` rejects the update implicitly.** If the block raises,
+  the update is neither acked nor broadcast (record-before-distribute stops both).
+  There is no negative-ack: the client simply never receives the ack, keeps the
+  update pending, and retransmits on its timer/reconnect. This is built for
+  *transient* failures (the store is briefly down → a retry lands). A block that
+  raises *deterministically* — a validation that always fails for this edit —
+  will be retried forever, since nothing tells the client to stop. Enforce hard
+  rejections before the edit reaches `on_change` (channel authorization in
+  `subscribed`), not by raising inside it.
 
 There is deliberately no in-gem cross-process lock. One that only spanned a
 single process would give exactly-once at small scale and silently degrade as
@@ -215,7 +224,7 @@ class DocumentChannel < ApplicationCable::Channel
   on_load  { |key| MyStore.load(key) }          # required: source of truth
   on_change { |key, update| MyStore.append(key, update) }  # required: record
 
-  def subscribed   = sync_for(params[:id])
+  def subscribed   = sync_subscribed(params[:id])
   def receive(data) = sync_receive(data, params[:id])   # pass the key each call
   def unsubscribed = sync_unsubscribed(params[:id])
 end
@@ -267,7 +276,7 @@ class DocumentChannel < ApplicationCable::Channel
     AuditLog.append!(key, update)   # raise to REJECT the change
   end
 
-  def subscribed = sync_for(params[:id])
+  def subscribed = sync_subscribed(params[:id])
   def receive(data) = sync_receive(data, params[:id])
   def unsubscribed = sync_unsubscribed(params[:id])
 end

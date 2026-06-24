@@ -62,8 +62,8 @@ class SyncTest < Minitest::Test
       on_load { |_key| nil }
     end
 
-    assert_match(/on_load/, assert_raises(YrbLite::Error) { no_loader.new.sync_for("doc") }.message)
-    assert_match(/on_change/, assert_raises(YrbLite::Error) { no_recorder.new.sync_for("doc") }.message)
+    assert_match(/on_load/, assert_raises(YrbLite::Error) { no_loader.new.sync_subscribed("doc") }.message)
+    assert_match(/on_change/, assert_raises(YrbLite::Error) { no_recorder.new.sync_subscribed("doc") }.message)
   end
 
   def test_config_is_inherited_by_subclasses
@@ -94,7 +94,7 @@ class SyncTest < Minitest::Test
   def test_sync_for_uses_stateless_streams_and_answers_from_store
     store = [YjsFixtures::TwoDocsMerged::DOC1_UPDATE]
     helper = helper_for(store: store)
-    helper.sync_for("doc")
+    helper.sync_subscribed("doc")
 
     assert_equal [["yrb_lite:doc", {}, true]], helper.streams
     assert_equal 1, helper.transmits.length
@@ -108,7 +108,7 @@ class SyncTest < Minitest::Test
   def test_anycable_whisper_is_scoped_to_awareness_stream
     helper = helper_for
     helper.define_singleton_method(:whispers_to) { |_broadcasting| nil }
-    helper.sync_for("doc")
+    helper.sync_subscribed("doc")
 
     assert_includes helper.streams, ["yrb_lite:doc", {}, true],
                     "document stream has no whisper option"
