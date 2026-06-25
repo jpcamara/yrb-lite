@@ -18,10 +18,11 @@ import {
   removeAwarenessStates,
   type Awareness,
 } from "y-protocols/awareness";
-import { readAuthMessage } from "y-protocols/auth";
 import { ReliableSync, type TimerHandle } from "./reliable_sync.js";
 
-export const MessageType = { Sync: 0, Awareness: 1, Auth: 2, QueryAwareness: 3 } as const;
+// The y-protocols frame types yrb-lite speaks, as the leading byte of a frame.
+// Other y-protocols types (auth = 2, query-awareness = 3) are not handled.
+export const MessageType = { Sync: 0, Awareness: 1 } as const;
 
 export interface YProtocolSessionOptions {
   /**
@@ -169,9 +170,9 @@ export class YProtocolSession {
   }
 
   /**
-   * Decode and apply one incoming binary protocol frame (document sync, awareness,
-   * query, or auth). Returns a reply frame to transmit (e.g. SyncStep2 answering a
-   * SyncStep1, or an awareness reply to a query), or null if there's nothing to send.
+   * Decode and apply one incoming binary protocol frame (document sync or
+   * awareness). Returns a reply frame to transmit (e.g. SyncStep2 answering a
+   * SyncStep1), or null if there's nothing to send.
    */
   receive(frame: Uint8Array): Uint8Array | null {
     // A malformed/truncated frame must never take down the transport callback:
@@ -193,20 +194,8 @@ export class YProtocolSession {
         case MessageType.Awareness:
           if (this.awareness) applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(decoder), this);
           break;
-        case MessageType.QueryAwareness:
-          if (this.awareness) {
-            encoding.writeVarUint(encoder, MessageType.Awareness);
-            encoding.writeVarUint8Array(
-              encoder,
-              encodeAwarenessUpdate(this.awareness, [...this.awareness.getStates().keys()])
-            );
-          }
-          break;
-        case MessageType.Auth:
-          readAuthMessage(decoder, this.doc, (_doc, reason) => console.warn(`[yrb-lite] auth denied: ${reason}`));
-          break;
         default:
-          return null; // unknown message type: ignore
+          return null; // a y-protocols type yrb-lite doesn't speak (auth, query-awareness): ignore
       }
       return encoding.length(encoder) > 1 ? encoding.toUint8Array(encoder) : null;
     } catch (error) {
@@ -261,19 +250,8 @@ export class YProtocolSession {
       case MessageType.Awareness:
         decoding.readVarUint8Array(decoder);
         break;
-      case MessageType.QueryAwareness:
-        break;
-      case MessageType.Auth: {
-        const scratchDoc = new Doc();
-        try {
-          readAuthMessage(decoder, scratchDoc, () => {});
-        } finally {
-          scratchDoc.destroy();
-        }
-        break;
-      }
       default:
-        return null; // unknown message type: ignore
+        return null; // a y-protocols type yrb-lite doesn't speak: ignore
     }
     // This protocol is one message per frame. Anything left after a complete
     // message is malformed (trailing garbage, or low-level packed messages whose
