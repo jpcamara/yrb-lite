@@ -112,11 +112,6 @@ fn yrb_error(msg: String) -> Error {
     Error::new(class, msg)
 }
 
-// Client ids are not validated. Whoever supplies the id (the app via
-// `Doc.new(id)`, or a remote peer over the wire) is responsible for keeping it
-// JS-safe (<= 2^53 - 1). See the protocol.rs header for why (and
-// `ClientID::try_new`, proposed upstream, for strict rejection).
-
 // ============================================================================
 // Doc Implementation
 // ============================================================================
