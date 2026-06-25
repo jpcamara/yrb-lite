@@ -2,7 +2,6 @@
 
 require "yrb_lite"
 require "base64"
-require "securerandom"
 
 module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
   # y-websocket protocol over ActionCable.
@@ -12,7 +11,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
   # y-protocols binary messages, base64-encoded in a JSON envelope:
   #
   #   { "update" => "<base64 bytes>", "id" => 42 } # client -> server
-  #   { "update" => "...", "origin" => "<id>" }    # server -> subscribers
+  #   { "update" => "<base64 bytes>" }             # server -> subscribers
   #   { "ack" => 42 }                              # server -> sender
   #
   # Example:
@@ -98,7 +97,6 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # transmits the server's opening handshake (SyncStep1 from the store).
     def sync_subscribed(key)
       @sync_key = key.to_s
-      @sync_origin = SecureRandom.hex(8)
       sync_validate_required_hooks!
 
       # The document stream is never whisper-enabled; under AnyCable we also
@@ -184,10 +182,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # observe distribution. Store-backed streams intentionally echo to the
     # sender; applying the same CRDT update twice is a no-op.
     def sync_distribute(encoded)
-      ActionCable.server.broadcast(
-        sync_stream_name,
-        sync_envelope(encoded, "origin" => @sync_origin, "pid" => Sync.process_id)
-      )
+      ActionCable.server.broadcast(sync_stream_name, sync_envelope(encoded))
     end
 
     # Transmit raw protocol bytes to this connection.
@@ -311,17 +306,6 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # (instance_exec) so it can reach the channel's own methods.
     def sync_record_change(recorder, update)
       instance_exec(@sync_key, update, &recorder)
-    end
-
-    # -- Shared process state ----------------------------------------------
-
-    class << self
-      # A stable id for this server process, stamped on every broadcast so
-      # other processes know to apply it to their replica and this process
-      # knows to skip its own. Survives for the life of the process.
-      def process_id
-        @process_id ||= SecureRandom.hex(8)
-      end
     end
   end
 end
