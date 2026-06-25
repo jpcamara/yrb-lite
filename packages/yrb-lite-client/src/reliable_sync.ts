@@ -1,23 +1,17 @@
 // Transport-agnostic reliable-delivery core for the yrb-lite y-websocket
-// protocol. This owns the "nuances" a provider would otherwise re-implement:
-// an ack-tracked queue of unacknowledged local updates, "sync since last ack"
-// (the unacked tail is sent as one MERGED, causally-complete delta so the server
-// never sees an internal gap), cumulative acks, periodic retransmit, and
-// reconnect replay.
+// protocol: an ack-tracked queue of unacknowledged local updates,
+// sync-since-last-ack (the unacked tail goes out as one merged, causally-complete
+// delta so the server never sees an internal gap), cumulative acks, periodic
+// retransmit, and reconnect replay.
 //
-// It does NOT touch any transport, Yjs binding, or wire encoding. You inject:
-//   - send(update, id):  transmit one update. `update` is the raw merged update
-//                        bytes; `id` is the cumulative sequence. Frame + base64
-//                        + put it on your socket.
-//   - merge(updates):    merge an array of update byte-arrays into one
-//                        (typically Y.mergeUpdates from yjs).
-// and you drive it from your provider's lifecycle:
-//   - enqueue(update)         on every local document update (not server echoes)
-//   - onAck(id)               when an { ack: id } frame arrives
-//   - onConnect()/onDisconnect()  on transport (re)connect / drop
+// It touches no transport, Yjs binding, or wire encoding. Inject two functions:
+// send(update, id) transmits one update (raw merged bytes plus a cumulative
+// sequence id; you frame, base64, and put it on the socket), and merge(updates)
+// merges update byte-arrays into one (usually Y.mergeUpdates). Drive it from the
+// provider lifecycle: enqueue(update) on each local edit, onAck(id) when an
+// { ack: id } frame arrives, and onConnect()/onDisconnect() on transport changes.
 //
-// Awareness/presence is intentionally out of scope -- it stays fire-and-forget
-// in the provider.
+// Awareness/presence stays out of scope; it's fire-and-forget in the provider.
 
 /** An opaque timer handle (number in browsers, Timeout in Node). */
 export type TimerHandle = unknown;
@@ -106,9 +100,9 @@ export class ReliableSync {
 
   /**
    * Confirm delivery up to `id`: prune every queued update with seq <= id.
-   * Acks arrive over the wire, so validate before pruning -- a malformed value
+   * Acks arrive over the wire, so validate before pruning. A malformed value
    * (NaN/string/negative) or an impossible future id must not silently drop the
-   * queue. Invalid acks are ignored.
+   * queue; invalid acks are ignored.
    */
   onAck(id: number): void {
     if (!Number.isSafeInteger(id) || id < 0) return; // malformed / impossible

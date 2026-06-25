@@ -1,20 +1,13 @@
-// A batteries-included, transport-agnostic session for the yrb-lite
-// y-websocket protocol.
+// Transport-agnostic session for the yrb-lite y-websocket protocol. Handles the
+// y-protocols framing, the sync handshake (SyncStep1/Step2/Update), and awareness
+// encode/apply on top of ReliableSync. Bind it to a Y.Doc (and an optional
+// Awareness); it works in raw Uint8Array frames and leaves the transport to the
+// caller: base64, the { update, id } / { ack } envelope, and a socket.
 //
-// YProtocolSession composes ReliableSync and additionally owns the parts a provider
-// would otherwise re-implement: the y-protocols message framing (encode/decode),
-// the sync-step handshake (SyncStep1 / SyncStep2 / Update), and awareness
-// encode/apply. It binds to a Y.Doc (and optional Awareness) and speaks in raw
-// Uint8Array frames -- you bring only the transport: base64 + the
-// `{ update, id }` / `{ ack }` envelope and the socket.
-//
-// Drive it from your transport:
-//   onConnect()          -> sends the opening handshake, replays the unacked tail
-//   onDisconnect()       -> pauses retransmits, clears remote presence
-//   ack(id)              -> a `{ ack: id }` envelope arrived
-//   const reply = receive(frame)  -> a binary protocol frame arrived; send `reply` if non-null
-// Local document edits and awareness changes are picked up automatically via the
-// doc's / awareness's "update" events.
+// Call onConnect() when the transport connects, onDisconnect() when it drops,
+// ack(id) on an { ack } envelope, and receive(frame) for an inbound frame (it
+// returns a reply to send, or null). Local doc and awareness edits send
+// themselves via the "update" events.
 import { Doc, mergeUpdates, applyUpdate } from "yjs";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
@@ -100,10 +93,10 @@ export class YProtocolSession {
 
     if (this.awareness) {
       this.#onAwarenessUpdate = ({ added, updated, removed }: AwarenessChange, origin: unknown) => {
-        // Only broadcast OUR OWN presence changes (origin "local"). Updates we
-        // applied from a peer -- and our own remote-cleanup in onDisconnect --
-        // carry origin === this; re-sending those would echo presence and
-        // broadcast tombstones for other clients' cursors.
+        // Only broadcast our own presence changes. Updates applied from a peer,
+        // and our own remote-cleanup in onDisconnect, carry origin === this;
+        // re-sending those would echo presence and broadcast tombstones for
+        // other clients' cursors.
         if (origin === this) return;
         const changed = added.concat(updated, removed);
         this.#send(this.#frameAwareness(changed), undefined); // fire-and-forget
@@ -159,20 +152,17 @@ export class YProtocolSession {
   }
 
   /**
-   * Apply an update to the document WITHOUT treating it as a local edit -- i.e.
-   * without queueing it for reliable re-delivery to the server. Use this for
-   * bootstrap/restore flows where the bytes are already-durable document state
-   * the server already has: initial state loaded over HTTP, a server snapshot, an
-   * import or restore.
+   * Apply an update without treating it as a local edit, so it isn't queued for
+   * re-delivery to the server. Use it for bootstrap/restore: initial state loaded
+   * over HTTP, a server snapshot, an import. These are bytes the server already
+   * has.
    *
-   * The session re-sends every doc update whose origin isn't itself (that's how a
-   * local keystroke becomes an outbound reliable frame). Applying bootstrap bytes
-   * with a bare `Y.applyUpdate(doc, update)` therefore looks exactly like a local
-   * edit and gets re-sent on the next connect -- echoing the whole initial state
-   * back as a "pending" change. Routing them through here applies them under the
-   * session's own origin, which the outbound filter skips. Safe to call before
-   * `onConnect()`: the bootstrapped state is folded into the SyncStep1 handshake
-   * (the server sees we already have it) instead of being re-sent.
+   * The session re-sends any doc update whose origin isn't itself (that's how a
+   * keystroke becomes an outbound frame), so a bare `Y.applyUpdate(doc, update)`
+   * would look like a local edit and get echoed back on the next connect. Going
+   * through here applies under the session's own origin, which the outbound
+   * filter skips. Safe to call before `onConnect()`: the state folds into the
+   * SyncStep1 handshake instead of being re-sent.
    */
   applyRemoteUpdate(update: Uint8Array): void {
     applyUpdate(this.doc, update, this);
@@ -286,8 +276,8 @@ export class YProtocolSession {
         return null; // unknown message type: ignore
     }
     // This protocol is one message per frame. Anything left after a complete
-    // message is malformed (trailing garbage, or low-level packed messages
-    // whose tail we'd silently drop) -- reject before mutating local state.
+    // message is malformed (trailing garbage, or low-level packed messages whose
+    // tail we'd silently drop), so reject it before mutating local state.
     if (decoding.hasContent(decoder)) {
       throw new Error("frame has trailing bytes after a complete message");
     }

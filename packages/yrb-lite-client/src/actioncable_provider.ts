@@ -1,21 +1,18 @@
-// A ready-made Yjs provider for the yrb-lite y-websocket protocol over
-// ActionCable / AnyCable. It owns the cable subscription and translates between
-// the cable's JSON envelope (`{ update, id }` / `{ ack }`, base64) and raw
-// protocol frames; everything else (sync steps, encode/decode, awareness,
-// reliable delivery) lives in YProtocolSession. So this is just the transport glue.
+// Yjs provider for the yrb-lite y-websocket protocol over ActionCable / AnyCable.
+// It owns the cable subscription and translates between the cable's JSON envelope
+// (`{ update, id }` / `{ ack }`, base64) and raw protocol frames. Everything else
+// (sync steps, encode/decode, awareness, reliable delivery) lives in
+// YProtocolSession; this is the transport glue.
 //
-// Awareness/presence frames use AnyCable's `whisper` when the subscription
-// supports it, but under a separate awareness-only envelope. Document frames
-// always use `send` so they pass through the server's persistence/ack path.
+// Awareness frames use AnyCable's `whisper` when available, under a separate
+// awareness-only envelope. Document frames always use `send` so they go through
+// the server's persistence/ack path.
 //
-// The constructor does NOT auto-connect: wire your editor binding first, then
-// call `connect()`.
-//
-// Observe the connection with `provider.onStatusChange(({ status }) => ...)`
-// (`"connecting" | "connected" | "synced" | "disconnected"`) or the `status`
-// getter. On `disconnect()` / `destroy()` -- and on browser `pagehide` -- the
-// provider broadcasts a presence removal so peers drop our cursor immediately
-// instead of waiting for the awareness timeout.
+// The constructor does not auto-connect: wire up your editor binding first, then
+// call `connect()`. Watch the connection with `onStatusChange(({ status }) => ...)`
+// or the `status` getter. On `disconnect()`/`destroy()`, and on browser
+// `pagehide`, the provider broadcasts a presence removal so peers drop our cursor
+// right away instead of waiting for the awareness timeout.
 import { YProtocolSession, MessageType, type YProtocolSessionOptions } from "./y_protocol_session.js";
 import { toBase64, fromBase64 } from "./base64.js";
 import { Awareness } from "y-protocols/awareness";
@@ -23,15 +20,14 @@ import type { Doc } from "yjs";
 
 /**
  * Connection lifecycle, folded into one signal (no separate "sync" event):
- *   connecting   -- subscription created, transport not up yet
- *   connected    -- transport up, exchanging sync steps (UI: "syncing")
- *   synced       -- caught up with the server
- *   disconnected -- torn down via disconnect()/destroy() (a dropped transport
- *                   that ActionCable will retry shows as "connecting")
+ * connecting (subscription created, transport not up yet), connected (transport
+ * up, exchanging sync steps; UI: "syncing"), synced (caught up), and disconnected
+ * (torn down via disconnect()/destroy()). A dropped transport that ActionCable
+ * will retry shows as "connecting", not "disconnected".
  */
 export type ProviderStatus = "connecting" | "connected" | "synced" | "disconnected";
 
-/** Payload for the `"status"` event. */
+/** Payload passed to onStatusChange listeners. */
 export interface StatusEvent {
   status: ProviderStatus;
 }
@@ -107,17 +103,16 @@ export class ActionCableProvider {
   }
 
   /**
-   * Apply a bootstrap/restore update -- initial HTTP state, a server snapshot, an
-   * import -- without re-sending it to the server as a local edit. Call it for
-   * each chunk of already-durable state when seeding the doc, e.g. before
-   * `connect()`:
+   * Apply a bootstrap/restore update (initial HTTP state, a server snapshot, an
+   * import) without re-sending it to the server as a local edit. Call it once per
+   * chunk of already-durable state when seeding the doc, before `connect()`:
    *
    *   provider.applyRemoteUpdate(fromBase64(initialState));
    *   priorUpdates.forEach((u) => provider.applyRemoteUpdate(fromBase64(u)));
    *   provider.connect();
    *
-   * See {@link YProtocolSession.applyRemoteUpdate} for why a bare
-   * `Y.applyUpdate` would instead be re-broadcast as a pending change.
+   * See {@link YProtocolSession.applyRemoteUpdate} for why a bare `Y.applyUpdate`
+   * would be re-broadcast as a pending change instead.
    */
   applyRemoteUpdate(update: Uint8Array): void {
     this.session.applyRemoteUpdate(update);

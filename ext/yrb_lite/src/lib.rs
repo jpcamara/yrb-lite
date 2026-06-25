@@ -37,12 +37,11 @@ fn assert_thread_safe() {
 ///   objects after returning.
 /// - It must be `Send` (it runs while other threads own the GVL). `&Doc` is
 ///   fine: it's `Sync` (asserted above).
-/// - LOCK DISCIPLINE: any native lock it takes -- the doc's internal RwLock --
-///   must be acquired AND released inside this closure (GVL already dropped).
-///   Never lock with the GVL held
-///   (e.g. before calling `nogvl`), or a thread waiting on the lock while
-///   holding the GVL can deadlock against the GVL reacquire. Same reason we
-///   never hold a lock across the GVL boundary.
+/// - Lock discipline: any native lock it takes (the doc's internal RwLock) must
+///   be acquired and released inside this closure, with the GVL already dropped.
+///   Never lock with the GVL held (e.g. before calling `nogvl`), or a thread
+///   waiting on the lock while holding the GVL can deadlock against the GVL
+///   reacquire. Same reason we never hold a lock across the GVL boundary.
 ///
 /// Panics inside the closure are caught and re-raised (resumed) after the GVL
 /// is reacquired, where magnus converts them to Ruby exceptions.
@@ -113,10 +112,10 @@ fn yrb_error(msg: String) -> Error {
     Error::new(class, msg)
 }
 
-// CLIENT IDs ARE NOT VALIDATED -- whoever supplies the id (the app via
-// `Doc.new(id)`, or a remote peer over the wire) is
-// responsible for keeping it JS-safe (<= 2^53 - 1). See the protocol.rs header
-// for why (and `ClientID::try_new`, proposed upstream, for strict rejection).
+// Client ids are not validated. Whoever supplies the id (the app via
+// `Doc.new(id)`, or a remote peer over the wire) is responsible for keeping it
+// JS-safe (<= 2^53 - 1). See the protocol.rs header for why (and
+// `ClientID::try_new`, proposed upstream, for strict rejection).
 
 // ============================================================================
 // Doc Implementation
@@ -176,7 +175,7 @@ impl RbDoc {
     }
 
     /// True if applying `update` would integrate cleanly (its dependencies are
-    /// all present). False means it would leave a pending struct -- an earlier
+    /// all present). False means it would leave a pending struct, i.e. an earlier
     /// update is missing. Pure read; does not mutate.
     fn update_ready(&self, update: RString) -> Result<bool, Error> {
         let update_bytes = copy_bytes(update);
@@ -253,7 +252,7 @@ impl RbDoc {
 }
 
 // ============================================================================
-// Protocol codec (stateless) -- exposed as `YrbLite` module functions
+// Protocol codec (stateless), exposed as `YrbLite` module functions
 // ============================================================================
 //
 // The server never holds presence or document state to classify a frame; these

@@ -39,9 +39,9 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
   # validated against `on_load`, recorded through `on_change`, then broadcast.
   # No authoritative document state is kept in ActionCable process memory.
   module Sync
-    # Frame kinds we act on, from YrbLite.message_kind. The other codes it can
-    # return -- 0 (drop: malformed/truncated/multi-message/unknown) and 4
-    # (awareness query) -- fall through to a no-op in the dispatch below.
+    # Frame kinds we act on, from YrbLite.message_kind. Its other codes (0 for a
+    # drop: malformed/truncated/multi-message/unknown, and 4 for an awareness
+    # query) fall through to a no-op in the dispatch below.
     MSG_KIND_SYNC_STEP1 = 1
     MSG_KIND_UPDATE = 2
     MSG_KIND_AWARENESS = 3
@@ -113,7 +113,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     #
     # Reliable delivery: document updates carry an "id", and the server replies
     # `{ "ack" => id }` once the update has been durably recorded. A
-    # causally-gapped update is not acked -- it gets a resync instead -- so the
+    # causally-gapped update is not acked; it gets a resync instead, so the
     # client retransmits until the update lands.
     def sync_receive(data, key = nil)
       # Pass `key` (params[:id]) when your transport doesn't keep the channel
@@ -132,7 +132,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       # is ~4/3 the decoded size) and again after, so a client can't force large
       # base64 decodes / native parses / merges. A dropped frame is never acked,
       # and there is no protocol NACK, so a legitimate oversized update is
-      # retransmitted indefinitely -- log the drop so it is at least findable.
+      # retransmitted indefinitely. Log the drop so it is at least findable.
       cap = self.class.max_frame_bytes
       if cap && encoded.bytesize > (cap * 4 / 3) + 4
         sync_log_drop(:warn, "encoded #{encoded.bytesize}B exceeds max_frame_bytes #{cap}B", id)
@@ -159,7 +159,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # Ask this connection's client to resync: re-send SyncStep1 carrying the
     # server's current (gap-free) state vector. The client replies SyncStep2
     # with everything the server is missing, delivered as one causally-complete
-    # delta -- which heals the gap that triggered the resync.
+    # delta, which heals the gap that triggered the resync.
     def sync_request_resync(doc)
       sync_transmit(doc.sync_step1)
     end
@@ -223,10 +223,10 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       end
     end
 
-    # This concern acks updates as *durably recorded*, so it MUST have both a
+    # This concern acks updates as durably recorded, so it must have both a
     # loader (to rebuild the doc and detect causal gaps) and a recorder (to
     # actually persist before acking). Fail closed rather than silently acking
-    # and broadcasting updates that were never stored -- which a cold load or
+    # and broadcasting updates that were never stored, which a cold load or
     # reconnect would then lose.
     def sync_validate_required_hooks!
       missing = []

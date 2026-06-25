@@ -1,9 +1,9 @@
-// Pure rust protocol helpers (ie, no Ruby interop).
+// Pure Rust protocol helpers (no Ruby interop).
 //
-// CLIENT IDs ARE NOT VALIDATED HERE -- on purpose. We deliberately don't police it -- every
-// legitimate peer (browser Yjs, and yrs's own `ClientID::random`) already emits
-// 53-bit ids, so it's the client's responsibility not to send a bad one, and we
-// don't want to own that logic.
+// Client ids are not validated here, on purpose: every legitimate peer (browser
+// Yjs, and yrs's own `ClientID::random`) already emits 53-bit ids, so it's the
+// client's responsibility not to send a bad one, and we don't want to own that
+// logic.
 use yrs::encoding::read::{Cursor, Read};
 use yrs::sync::protocol::MessageReader;
 use yrs::sync::{Message, SyncMessage};
@@ -69,29 +69,29 @@ pub(crate) fn merged_doc_update(bytes: &[u8]) -> Result<Option<Vec<u8>>, String>
 /// True if applying `update_bytes` to `doc` would integrate cleanly: every
 /// dependency the update references is already present (the doc's state vector
 /// covers the update's lower bound). A pure read; does not mutate the doc.
-/// When false, applying it would park a pending struct -- the signal that an
+/// When false, applying it would park a pending struct, the signal that an
 /// earlier, causally-prior update is missing.
 pub(crate) fn update_is_ready(doc: &Doc, update_bytes: &[u8]) -> Result<bool, String> {
     let update = yrs::Update::decode_v1(update_bytes).map_err(|e| e.to_string())?;
     Ok(doc.transact().state_vector() >= update.state_vector_lower())
 }
 
-/// True if applying `update_bytes` would actually change `doc` -- i.e. it carries
-/// content the doc doesn't already have. Lets the server make durable side
+/// True if applying `update_bytes` would actually change `doc`, i.e. it carries
+/// content the doc doesn't already have. This lets the server make durable side
 /// effects exactly-once: a lost-ack retry re-sends an update the server already
 /// applied; that retry is causally ready (so `update_is_ready` is true) but must
-/// NOT re-run `on_change`.
+/// not re-run `on_change`.
 ///
 /// We can't read the update's own state vector to decide this: yrs reports an
-/// EMPTY state_vector() for a causally-pending diff (e.g. a resync delta whose
+/// empty state_vector() for a causally-pending diff (e.g. a resync delta whose
 /// structs depend on updates the doc has but the standalone update doesn't),
 /// which would look identical to a no-op. So measure the real effect: seed an
 /// independent probe with the doc's current state, apply the update there, and
 /// see whether the state vector grew. Deletes don't move the state vector, so we
-/// can't cheaply prove a delete-bearing update is a duplicate -- we
-/// conservatively report it as advancing (record it). That can still
-/// double-record a pure-delete retry, but it NEVER drops a real deletion, which
-/// is the safe direction. Assumes the update is already causally ready.
+/// can't cheaply prove a delete-bearing update is a duplicate; we conservatively
+/// report it as advancing (record it). That can still double-record a pure-delete
+/// retry, but it never drops a real deletion, which is the safe direction.
+/// Assumes the update is already causally ready.
 pub(crate) fn update_advances_doc(doc: &Doc, update_bytes: &[u8]) -> Result<bool, String> {
     let update = yrs::Update::decode_v1(update_bytes).map_err(|e| e.to_string())?;
     if !update.delete_set().is_empty() {
@@ -114,7 +114,7 @@ pub(crate) fn update_advances_doc(doc: &Doc, update_bytes: &[u8]) -> Result<bool
     Ok(after != before)
 }
 
-/// True if the doc holds pending structs or a pending delete set -- blocks that
+/// True if the doc holds pending structs or a pending delete set: blocks that
 /// couldn't integrate because a dependency is missing. Test-only: asserts the
 /// causal-chain parking behavior in the unit tests below.
 #[cfg(test)]
@@ -213,8 +213,8 @@ mod tests {
     #[test]
     fn update_advances_handles_a_dependent_diff_update() {
         // A causally-pending diff (its structs depend on content the doc already
-        // has) reports an EMPTY state_vector() in isolation -- a naive check would
-        // misread it as a no-op. Verify the trial-apply gets it right.
+        // has) reports an empty state_vector() in isolation, which a naive check
+        // would misread as a no-op. Verify the trial-apply gets it right.
         let doc = Doc::new();
         let text = doc.get_or_insert_text("content");
         text.insert(&mut doc.transact_mut(), 0, "a");
