@@ -4,8 +4,15 @@ class DocumentsController < ApplicationController
   # The audit control endpoint is a test hook (POST without a form token).
   skip_forgery_protection only: :audit_control
 
-  # The collaborative editor page.
+  # The collaborative editor page (Tiptap).
   def show
+    @document_id = params[:id]
+  end
+
+  # The same document, edited through a Lexxy (Lexical) editor via
+  # lexxy-realtime. Same DocumentChannel, same durable store — just a different
+  # front end, to show the yrb-lite protocol is editor-agnostic.
+  def lexxy
     @document_id = params[:id]
   end
 

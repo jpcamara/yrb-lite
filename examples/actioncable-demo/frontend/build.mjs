@@ -18,9 +18,13 @@ import { fileURLToPath } from "node:url"
 
 const here = dirname(fileURLToPath(import.meta.url))
 
-// One canonical resolution per CRDT singleton, taken from the top-level
-// node_modules so every importer (editor and provider alike) shares it.
-const SINGLETONS = ["yjs", "y-protocols", "lib0"]
+// One canonical resolution per shared singleton, taken from the top-level
+// node_modules so every importer shares it. yjs / y-protocols / lib0 are the
+// CRDT singletons; `lexical` is added for the Lexxy page, since Lexical asserts
+// node-class identity (a registered node's class must match the constructed
+// node's), and two copies of `lexical` would break that the same way two copies
+// of yjs break y-prosemirror.
+const SINGLETONS = ["yjs", "y-protocols", "lib0", "lexical"]
 const canonical = (name) => resolve(here, "node_modules", name)
 
 const dedupeSingletons = {
@@ -41,20 +45,49 @@ const dedupeSingletons = {
   },
 }
 
-async function build() {
+// The Tiptap page (app.js) and the Lexxy page (lexxy.js) are independent
+// entrypoints sharing the dedupe plugin. The Lexxy bundle also imports Lexxy's
+// CSS, which Bun emits as ../public/lexxy.css.
+const ENTRIES = [
+  { entry: "src/app.js", name: "app.js" },
+  { entry: "src/lexxy.js", name: "lexxy.js" },
+]
+
+// Lexxy dynamically imports @rails/activestorage for attachment uploads, which
+// this collaboration demo doesn't use. Stub it so the bundle is self-contained
+// (the Tiptap entry never imports it, so this is a no-op there).
+const stubActivestorage = {
+  name: "stub-activestorage",
+  setup(build) {
+    build.onResolve({ filter: /^@rails\/activestorage$/ }, () => ({
+      path: resolve(here, "src/stubs/activestorage.js"),
+    }))
+  },
+}
+
+async function buildEntry({ entry, name }) {
+  // An entry that imports CSS emits two entry-category outputs (JS + CSS), so the
+  // naming needs an [ext] placeholder to split them -- otherwise both want the
+  // same path. [name] is the source basename, so src/lexxy.js -> lexxy.js and its
+  // CSS -> lexxy.css; src/app.js -> app.js.
   const result = await Bun.build({
-    entrypoints: [resolve(here, "src/app.js")],
+    entrypoints: [resolve(here, entry)],
     outdir: resolve(here, "../public"),
-    naming: "app.js",
+    naming: "[name].[ext]",
     minify: true,
-    plugins: [dedupeSingletons],
+    plugins: [dedupeSingletons, stubActivestorage],
   })
   if (!result.success) {
     for (const log of result.logs) console.error(log)
     return false
   }
-  console.log("built ../public/app.js")
+  console.log(`built ../public/${name}`)
   return true
+}
+
+async function build() {
+  const results = await Promise.all(ENTRIES.map(buildEntry))
+  return results.every(Boolean)
 }
 
 if (process.argv.includes("--watch")) {

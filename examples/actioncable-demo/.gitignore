@@ -4,5 +4,7 @@
 !/tmp/.keep
 /frontend/node_modules/
 /public/app.js
+/public/lexxy.js
+/public/lexxy.css
 .DS_Store
 /config/master.key
