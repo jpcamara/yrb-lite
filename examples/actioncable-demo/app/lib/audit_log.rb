@@ -4,7 +4,7 @@ require "base64"
 require "fileutils"
 
 # A durable, append-only audit log of every document change; the demo's
-# stand-in for whatever a real app would record to. yrb-lite's `on_change` hook
+# stand-in for whatever a real app would record to. y-ruby's `on_change` hook
 # calls `record` before the change is applied or broadcast, serialized per
 # document, so the log keeps changes in the order they happened.
 #
@@ -22,7 +22,7 @@ class AuditLog
   class << self
     # Synchronously persist a change. Writes + fsyncs before returning, so a
     # successful return means the change is durable. Raising here (e.g. disk
-    # full) makes yrb-lite reject the change: it is never applied or sent.
+    # full) makes y-ruby reject the change: it is never applied or sent.
     #
     # Every server process appends to the same file (O_APPEND is atomic), so
     # the history is shared across a multi-process deployment rather than living
@@ -58,7 +58,7 @@ class AuditLog
       path = path_for(key)
       return nil unless File.exist?(path)
 
-      doc = YrbLite::Doc.new
+      doc = Y::Ruby::Doc.new
       applied = 0
       File.foreach(path) do |line|
         line = line.strip

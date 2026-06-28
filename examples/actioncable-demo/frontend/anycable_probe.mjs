@@ -1,4 +1,4 @@
-// Probe yrb-lite's behavior under AnyCable. WS is terminated by anycable-go
+// Probe y-ruby's behavior under AnyCable. WS is terminated by anycable-go
 // (WS_PORT), channel logic runs in the AnyCable RPC server (a different Ruby
 // process than Puma), and HTTP (/content) is served by Puma (HTTP_PORT).
 //

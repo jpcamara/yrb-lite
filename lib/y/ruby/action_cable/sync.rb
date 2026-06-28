@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-require "yrb_lite"
+require "y/ruby"
 require "base64"
 
-module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
+module Y::Ruby::ActionCable # rubocop:disable Style/ClassAndModuleChildren
   # y-websocket protocol over ActionCable.
   #
   # Include this module in an ActionCable channel to sync Y.js documents
@@ -16,7 +16,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
   #
   # Example:
   #   class DocumentChannel < ApplicationCable::Channel
-  #     include YrbLite::ActionCable::Sync
+  #     include Y::Ruby::ActionCable::Sync
   #
   #     on_load { |key| Document.find_by(key: key)&.content }
   #     # on_change runs in the channel instance's context, so instance methods
@@ -39,7 +39,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
   # validated against `on_load`, recorded through `on_change`, then broadcast.
   # No authoritative document state is kept in ActionCable process memory.
   module Sync
-    # Frame kinds we act on, from YrbLite.message_kind. Its other codes (0 for a
+    # Frame kinds we act on, from Y::Ruby.message_kind. Its other codes (0 for a
     # drop: malformed/truncated/multi-message/unknown, and 4 for an awareness
     # query) fall through to a no-op in the dispatch below.
     MSG_KIND_SYNC_STEP1 = 1
@@ -219,7 +219,7 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
           "log-context-error=#{e.class}"
         end
         parts << context if context
-        "[yrb-lite] dropped frame (#{parts.join(" ")}): #{reason}"
+        "[y-ruby] dropped frame (#{parts.join(" ")}): #{reason}"
       end
     end
 
@@ -234,8 +234,8 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
       missing << :on_change unless self.class.on_change
       return if missing.empty?
 
-      raise YrbLite::Error,
-            "YrbLite::ActionCable::Sync requires #{missing.join(" and ")}. Updates are acked as " \
+      raise Y::Ruby::Error,
+            "Y::Ruby::ActionCable::Sync requires #{missing.join(" and ")}. Updates are acked as " \
             "durably recorded; without a loader and recorder, an ack would claim a persistence " \
             "that never happened, and a cold load would lose the edit."
     end
@@ -251,13 +251,13 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     def sync_handle_frame(encoded, bytes)
       sync_validate_required_hooks!
 
-      case YrbLite.message_kind(bytes)
+      case Y::Ruby.message_kind(bytes)
       when MSG_KIND_SYNC_STEP1
         result = sync_load_doc.handle_sync_message(bytes)
         sync_transmit(result[2])
         :noop
       when MSG_KIND_UPDATE
-        update = YrbLite.update_from_message(bytes)
+        update = Y::Ruby.update_from_message(bytes)
         return :noop unless update
 
         # Rebuild from the store (O(history) per update; snapshot in on_load if
@@ -289,14 +289,14 @@ module YrbLite::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     # Build a fresh document from the durable store (on_load). Callers validate
     # the hooks first, so on_load is present; a nil state means a fresh document.
     def sync_load_doc
-      doc = YrbLite::Doc.new
+      doc = Y::Ruby::Doc.new
       state = instance_exec(@sync_key, &self.class.on_load)
       doc.apply_update(state) if state
       doc
     end
 
     def sync_stream_name
-      "yrb_lite:#{@sync_key}"
+      "y_ruby:#{@sync_key}"
     end
 
     def sync_awareness_stream_name

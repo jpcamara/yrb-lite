@@ -3,10 +3,10 @@
 // Double-click to add a note, drag to move (writes x/y), type to edit. Real
 // canvas tools (tldraw, Excalidraw) keep their document as a record store and
 // bind it to a Y.Map/Y.Array the same way — so this exact provider drops under
-// them. yrb-lite just syncs the Map.
+// them. y-ruby just syncs the Map.
 import * as Y from "yjs"
 import { createConsumer } from "@rails/actioncable"
-import { ActionCableProvider } from "yrb-lite-client"
+import { ActionCableProvider } from "@y-ruby/client"
 
 const NAMES = ["Ada", "Grace", "Linus", "Yukihiro", "Barbara", "Dennis", "Radia", "Alan"]
 const COLORS = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#22d3ee", "#818cf8", "#e879f9", "#f472b6"]

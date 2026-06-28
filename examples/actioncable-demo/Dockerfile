@@ -1,13 +1,13 @@
-# Containerized yrb-lite actioncable demo.
+# Containerized y-ruby actioncable demo.
 #
-# Build context is the yrb-lite repo ROOT (see docker-compose.yml), because the
-# demo depends on the gem via `path: "../.."` and on yrb-lite-client via
-# `file:../../../packages/yrb-lite-client`. The Lexxy editor page additionally
+# Build context is the y-ruby repo ROOT (see docker-compose.yml), because the
+# demo depends on the gem via `path: "../.."` and on @y-ruby/client via
+# `file:../../../packages/client`. The Lexxy editor page additionally
 # depends on lexxy-realtime, a SIBLING repo (`file:../../../../lexxy-realtime`),
 # which we clone so the relative path resolves. We mirror the host layout exactly
 # under /src so every existing relative path Just Works:
 #
-#   /src/yrb-lite          <- this repo (gem source + demo)
+#   /src/y-ruby          <- this repo (gem source + demo)
 #   /src/lexxy-realtime    <- cloned sibling (the Lexxy front end)
 #
 # The image carries Rust (to compile the native extension) and bun (to build the
@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential clang libpq-dev postgresql-client git curl ca-certificates unzip \
  && rm -rf /var/lib/apt/lists/*
 
-# Rust toolchain for the yrb-lite native extension (rb_sys/magnus).
+# Rust toolchain for the y-ruby native extension (rb_sys/magnus).
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
 
@@ -34,26 +34,26 @@ ARG LEXXY_REALTIME_REF=main
 RUN git clone --depth 1 --branch "${LEXXY_REALTIME_REF}" \
       https://github.com/jpcamara/lexxy-realtime.git /src/lexxy-realtime
 
-# The repo (build context root) lands at /src/yrb-lite so `path: "../.."` resolves.
-WORKDIR /src/yrb-lite
-COPY . /src/yrb-lite
+# The repo (build context root) lands at /src/y-ruby so `path: "../.."` resolves.
+WORKDIR /src/y-ruby
+COPY . /src/y-ruby
 
 # Compile the native extension for the image's platform. A `path:` gem is NOT
 # auto-compiled by the consumer's `bundle install` (only published gems are), so
-# build it explicitly into lib/yrb_lite/yrb_lite.so -- otherwise the loader's
+# build it explicitly into lib/y/ruby/y_ruby.so -- otherwise the loader's
 # require fails at runtime. (The Linux platforms are added because the committed
 # lockfiles were resolved on macOS.)
-RUN cd /src/yrb-lite \
+RUN cd /src/y-ruby \
  && bundle lock --add-platform x86_64-linux aarch64-linux \
  && bundle install \
  && bundle exec rake compile
 
-# yrb-lite-client (a file: dep of the front end) ships from a `dist/` that is NOT
+# @y-ruby/client (a file: dep of the front end) ships from a `dist/` that is NOT
 # committed and has no install-time build hook, so build it explicitly first --
 # the demo's `bun install` then copies the fresh dist.
-RUN cd /src/yrb-lite/packages/yrb-lite-client && bun install && bun run build
+RUN cd /src/y-ruby/packages/client && bun install && bun run build
 
-WORKDIR /src/yrb-lite/examples/actioncable-demo
+WORKDIR /src/y-ruby/examples/actioncable-demo
 
 # Install the demo's gems (the native ext is already compiled above), then build
 # the front-end bundles.

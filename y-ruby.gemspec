@@ -1,24 +1,24 @@
 # frozen_string_literal: true
 
-require_relative "lib/yrb_lite/version"
+require_relative "lib/y/ruby/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "yrb-lite"
-  spec.version = YrbLite::VERSION
+  spec.name = "y-ruby"
+  spec.version = Y::Ruby::VERSION
   spec.authors = ["JP Camara"]
   spec.email = ["johnpcamara@gmail.com"]
 
   spec.summary = "Thread-safe Ruby bindings for y-crdt (Y.js): documents, awareness, and the y-websocket sync protocol"
-  spec.description = "yrb-lite is a thread-safe Ruby binding over the Rust y-crdt (yrs) library: CRDT documents, " \
+  spec.description = "y-ruby is a thread-safe Ruby binding over the Rust y-crdt (yrs) library: CRDT documents, " \
                      "awareness/presence, and the y-websocket sync protocol primitives, with the GVL released " \
                      "during native work so documents sync in parallel. The ActionCable/Rails integration lives " \
-                     "in the companion yrb-lite-actioncable gem."
-  spec.homepage = "https://github.com/jpcamara/yrb-lite"
+                     "in the companion y-ruby-actioncable gem."
+  spec.homepage = "https://github.com/jpcamara/y-ruby"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.4.0"
 
-  # The ActionCable layer (lib/yrb_lite/action_cable*) ships in the separate
-  # yrb-lite-actioncable gem, so it's excluded from the core gem here.
+  # The ActionCable layer (lib/y/ruby/action_cable*) ships in the separate
+  # y-ruby-actioncable gem, so it's excluded from the core gem here.
   spec.files = Dir[
     "lib/**/*.rb",
     "ext/**/*.{rb,rs,toml}",
@@ -26,10 +26,10 @@ Gem::Specification.new do |spec|
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
-  ] - Dir["lib/yrb-lite-actioncable.rb", "lib/yrb_lite/action_cable.rb", "lib/yrb_lite/action_cable/**/*"]
+  ] - Dir["lib/y-ruby-actioncable.rb", "lib/y/ruby/action_cable.rb", "lib/y/ruby/action_cable/**/*"]
 
   spec.require_paths = ["lib"]
-  spec.extensions = ["ext/yrb_lite/extconf.rb"]
+  spec.extensions = ["ext/y_ruby/extconf.rb"]
 
   spec.metadata["source_code_uri"] = spec.homepage
   spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"

@@ -1,26 +1,26 @@
 # frozen_string_literal: true
 
-require_relative "lib/yrb_lite/action_cable/version"
+require_relative "lib/y/ruby/action_cable/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "yrb-lite-actioncable"
-  spec.version = YrbLite::ActionCable::VERSION
+  spec.name = "y-ruby-actioncable"
+  spec.version = Y::Ruby::ActionCable::VERSION
   spec.authors = ["JP Camara"]
   spec.email = ["johnpcamara@gmail.com"]
 
-  spec.summary = "ActionCable integration for yrb-lite: the y-websocket sync protocol and awareness over ActionCable/AnyCable"
-  spec.description = "yrb-lite-actioncable adds a Rails ActionCable channel concern (YrbLite::ActionCable::Sync) on " \
-                     "top of the yrb-lite y-crdt bindings: the full y-websocket sync protocol, awareness/presence, " \
+  spec.summary = "ActionCable integration for y-ruby: the y-websocket sync protocol and awareness over ActionCable/AnyCable"
+  spec.description = "y-ruby-actioncable adds a Rails ActionCable channel concern (Y::Ruby::ActionCable::Sync) on " \
+                     "top of the y-ruby y-crdt bindings: the full y-websocket sync protocol, awareness/presence, " \
                      "record-before-distribute auditing, and memory/store backends (AnyCable-ready), so a Rails app " \
                      "can be the collaboration server for Y.js editors with no Node sidecar."
-  spec.homepage = "https://github.com/jpcamara/yrb-lite"
+  spec.homepage = "https://github.com/jpcamara/y-ruby"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.4.0"
 
   spec.files = Dir[
-    "lib/yrb-lite-actioncable.rb",
-    "lib/yrb_lite/action_cable.rb",
-    "lib/yrb_lite/action_cable/**/*.rb",
+    "lib/y-ruby-actioncable.rb",
+    "lib/y/ruby/action_cable.rb",
+    "lib/y/ruby/action_cable/**/*.rb",
     "LICENSE",
     "README.md",
     "CHANGELOG-actioncable.md"
@@ -34,7 +34,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "base64", "~> 0.2"
   # Floor raised for update_advances? + wire client-id frame validation.
-  spec.add_dependency "yrb-lite", ">= 0.2.0"
+  spec.add_dependency "y-ruby", ">= 0.2.0"
   # The concern references ActionCable (channels, streaming, broadcasting) and
   # ActiveSupport (Concern, JSON coder) constants directly. Rails apps already
   # bundle these, but declaring them makes use outside a full Rails bundle fail

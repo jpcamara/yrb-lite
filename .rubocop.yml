@@ -38,7 +38,7 @@ Metrics/CyclomaticComplexity:
 Metrics/PerceivedComplexity:
   Max: 12
 Metrics/ModuleLength:
-  Max: 280 # YrbLite::ActionCable::Sync is one cohesive protocol concern
+  Max: 280 # Y::Ruby::ActionCable::Sync is one cohesive protocol concern
 Layout/LineLength:
   Max: 120
   Exclude:
@@ -63,6 +63,6 @@ Gemspec/DevelopmentDependencies:
 # Intentional dasherized shim so Bundler can auto-require the gem by its name.
 Naming/FileName:
   Exclude:
-    - "lib/yrb-lite.rb"
-    - "lib/yrb-lite-actioncable.rb"
-    - "lib/yrb-lite-decoder.rb"
+    - "lib/y-ruby.rb"
+    - "lib/y-ruby-actioncable.rb"
+    - "lib/y-ruby-decoder.rb"

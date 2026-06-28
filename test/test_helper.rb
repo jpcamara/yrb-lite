@@ -1,5 +1,5 @@
 # frozen_string_literal: true
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-require "yrb_lite"
+require "y/ruby"
 require "minitest/autorun"

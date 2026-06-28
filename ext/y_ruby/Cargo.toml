@@ -1,5 +1,5 @@
 [package]
-name = "yrb_lite"
+name = "y_ruby"
 version = "0.1.0"
 edition = "2021"
 authors = ["JP Camara <johnpcamara@gmail.com>"]

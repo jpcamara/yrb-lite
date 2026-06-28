@@ -15,12 +15,12 @@ Makefile
 mkmf.log
 
 # Extension build directory
-/ext/yrb_lite/Makefile
-/ext/yrb_lite/*.o
-/ext/yrb_lite/*.so
-/ext/yrb_lite/*.bundle
-/lib/yrb_lite/*.bundle
-/lib/yrb_lite/*.so
+/ext/y_ruby/Makefile
+/ext/y_ruby/*.o
+/ext/y_ruby/*.so
+/ext/y_ruby/*.bundle
+/lib/y/ruby/*.bundle
+/lib/y/ruby/*.so
 
 # Gem packages
 *.gem
@@ -52,4 +52,4 @@ target/
 bench/large_update.bin
 
 # TypeScript build output
-packages/yrb-lite-client/dist/
+packages/client/dist/

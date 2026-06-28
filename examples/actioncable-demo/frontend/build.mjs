@@ -1,7 +1,7 @@
 // Bundles the demo's frontend with a single shared copy of yjs (and the other
-// CRDT singletons). yrb-lite-client lists yjs/y-protocols as *devDependencies*
+// CRDT singletons). @y-ruby/client lists yjs/y-protocols as *devDependencies*
 // so it can build its own dist/, which leaves a nested
-// packages/yrb-lite-client/node_modules/yjs on disk. Without deduping, Bun
+// packages/client/node_modules/yjs on disk. Without deduping, Bun
 // resolves the provider's `import "yjs"` to that nested copy while the editor
 // (Tiptap/y-prosemirror) uses the top-level one — two Y.js instances in one
 // bundle. That trips Yjs's "already imported" guard and breaks constructor

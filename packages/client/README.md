@@ -1,6 +1,6 @@
-# yrb-lite-client
+# @y-ruby/client
 
-The **client core** for the [`yrb-lite`](https://github.com/jpcamara/yrb-lite)
+The **client core** for the [`y-ruby`](https://github.com/jpcamara/y-ruby)
 y-websocket protocol — everything a Yjs provider needs *except the transport*.
 Bring your own socket (ActionCable, AnyCable, raw WebSocket); this owns the
 protocol.
@@ -25,12 +25,12 @@ Three layers, use whichever you need:
 ## Install
 
 ```bash
-npm install yrb-lite-client
+npm install @y-ruby/client
 ```
 
 `ActionCableProvider` and `YProtocolSession` need `yjs` and `y-protocols` (peers — your
 app already has them), plus an ActionCable/AnyCable consumer. `ReliableSync` has
-**no dependencies**; import it on its own via `yrb-lite-client/reliable` if
+**no dependencies**; import it on its own via `@y-ruby/client/reliable` if
 that's all you want.
 
 Written in **TypeScript** and ships bundled type declarations, so TS projects get
@@ -40,7 +40,7 @@ plain-JS projects use the same compiled ESM with nothing extra to install.
 ## ActionCableProvider (the easy path)
 
 ```js
-import { ActionCableProvider } from "yrb-lite-client";
+import { ActionCableProvider } from "@y-ruby/client";
 import * as Y from "yjs";
 import { createConsumer } from "@anycable/web"; // or @rails/actioncable
 
@@ -73,8 +73,8 @@ deferred one microtask so that removal flushes first) and tears down the
 your own `Awareness`, drop down to `YProtocolSession`, which leaves it for you to
 own.)
 
-On the server, include `YrbLite::ActionCable::Sync` in a channel named
-`DocumentChannel` (the [`yrb-lite-actioncable`](https://rubygems.org/gems/yrb-lite-actioncable)
+On the server, include `Y::Ruby::ActionCable::Sync` in a channel named
+`DocumentChannel` (the [`y-ruby-actioncable`](https://rubygems.org/gems/y-ruby-actioncable)
 gem). The server subscribes document broadcasts and AnyCable awareness whispers
 on separate streams, so the document stream is not whisper-enabled. Need a
 different transport or framing? Drop down to `YProtocolSession` and supply your
@@ -92,7 +92,7 @@ AnyCable awareness whisper           { awareness: "<base64 awareness frame>" }
 ## YProtocolSession
 
 ```js
-import { YProtocolSession, toBase64, fromBase64 } from "yrb-lite-client";
+import { YProtocolSession, toBase64, fromBase64 } from "@y-ruby/client";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 
@@ -132,7 +132,7 @@ transport callback. Defaults to a `console.warn`.
 ## ReliableSync (standalone)
 
 ```js
-import { ReliableSync } from "yrb-lite-client/reliable"; // zero-dep
+import { ReliableSync } from "@y-ruby/client/reliable"; // zero-dep
 import * as Y from "yjs";
 
 const rs = new ReliableSync({
@@ -152,7 +152,7 @@ Document delivery stays queued and ack-tracked for the lifetime of the session.
 ## How it fits
 
 The server counterpart — ack *generation*, gap detection, record-before-distribute
-— is the `yrb-lite-actioncable` gem's `YrbLite::ActionCable::Sync`. This package
+— is the `y-ruby-actioncable` gem's `Y::Ruby::ActionCable::Sync`. This package
 is the client half of the same protocol.
 
 ## License

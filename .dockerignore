@@ -1,5 +1,5 @@
 # Build context for examples/actioncable-demo/Dockerfile is this repo root.
-# Keep the gem source (lib, ext, Cargo.*, *.gemspec), packages/yrb-lite-client
+# Keep the gem source (lib, ext, Cargo.*, *.gemspec), packages/client
 # source, and the demo; drop everything heavy or rebuilt in the image.
 
 .git
@@ -24,7 +24,7 @@ pkg
 examples/actioncable-demo/data
 
 # Rebuilt inside the image.
-packages/yrb-lite-client/dist
+packages/client/dist
 examples/actioncable-demo/public/app.js
 examples/actioncable-demo/public/lexxy.js
 examples/actioncable-demo/public/lexxy.css

@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 # Collaborative document channel. The whole y-websocket protocol is the three
-# lines of YrbLite::ActionCable::Sync below. Documents are loaded from and
+# lines of Y::Ruby::ActionCable::Sync below. Documents are loaded from and
 # recorded to Store.current; ActionCable process memory is not authoritative.
 class DocumentChannel < ApplicationCable::Channel
-  include YrbLite::ActionCable::Sync
+  include Y::Ruby::ActionCable::Sync
 
   on_load  { |key| Store.current.replay(key) }
   on_change { |key, update| Store.current.record(key, update) }

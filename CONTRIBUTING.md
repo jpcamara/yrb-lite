@@ -1,4 +1,4 @@
-# Contributing to yrb-lite
+# Contributing to y-ruby
 
 Issues, bug reports, and PRs are all welcome.
 
@@ -18,7 +18,7 @@ bundle install
 bundle exec rake compile        # build the Rust extension
 bundle exec rake test           # Ruby test suite (test/**/*_test.rb)
 
-cargo test  --manifest-path ext/yrb_lite/Cargo.toml   # Rust unit tests
+cargo test  --manifest-path ext/y_ruby/Cargo.toml   # Rust unit tests
 ```
 
 ### Linting
@@ -27,18 +27,18 @@ CI enforces all of these; run them before opening a PR:
 
 ```bash
 bundle exec rubocop                                              # Ruby
-cargo fmt   --manifest-path ext/yrb_lite/Cargo.toml -- --check   # Rust format
-cargo clippy --manifest-path ext/yrb_lite/Cargo.toml --all-targets -- -D warnings
+cargo fmt   --manifest-path ext/y_ruby/Cargo.toml -- --check   # Rust format
+cargo clippy --manifest-path ext/y_ruby/Cargo.toml --all-targets -- -D warnings
 ```
 
-`cargo fmt --manifest-path ext/yrb_lite/Cargo.toml` and `bundle exec rubocop -A`
+`cargo fmt --manifest-path ext/y_ruby/Cargo.toml` and `bundle exec rubocop -A`
 auto-fix most issues.
 
 ## Layout
 
 ```
-lib/                     # Ruby: YrbLite::ActionCable::Sync (the ActionCable concern)
-ext/yrb_lite/src/        # Rust: lib.rs (magnus bindings) + protocol.rs (pure protocol helpers)
+lib/                     # Ruby: Y::Ruby::ActionCable::Sync (the ActionCable concern)
+ext/y_ruby/src/        # Rust: lib.rs (magnus bindings) + protocol.rs (pure protocol helpers)
 test/                    # Ruby unit tests
 examples/actioncable-demo/   # a separate, deliberately thorough demo app (see below)
 ```

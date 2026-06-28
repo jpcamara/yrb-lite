@@ -2,10 +2,10 @@
 // Shared state is a flat Y.Array of card Y.Maps ({ id, text, column }). Adding a
 // card pushes a Y.Map; moving a card is a single map.set("column", ...) so two
 // people moving different cards never conflict; deleting splices the array.
-// Same DocumentChannel — yrb-lite knows nothing about "cards" or "columns".
+// Same DocumentChannel — y-ruby knows nothing about "cards" or "columns".
 import * as Y from "yjs"
 import { createConsumer } from "@rails/actioncable"
-import { ActionCableProvider } from "yrb-lite-client"
+import { ActionCableProvider } from "@y-ruby/client"
 
 const NAMES = ["Ada", "Grace", "Linus", "Yukihiro", "Barbara", "Dennis", "Radia", "Alan"]
 const COLORS = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#22d3ee", "#818cf8", "#e879f9", "#f472b6"]

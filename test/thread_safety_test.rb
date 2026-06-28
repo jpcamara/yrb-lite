@@ -21,7 +21,7 @@ class ThreadSafetyTest < Minitest::Test
   ITERATIONS = 50
 
   def test_concurrent_writes_and_reads_on_shared_doc
-    doc = YrbLite::Doc.new
+    doc = Y::Ruby::Doc.new
     updates = [
       YjsFixtures::TwoDocsMerged::DOC1_UPDATE,
       YjsFixtures::TwoDocsMerged::DOC2_UPDATE
@@ -43,7 +43,7 @@ class ThreadSafetyTest < Minitest::Test
 
     # CRDT convergence: interleaved/repeated application must equal
     # sequential application of the same updates.
-    sequential = YrbLite::Doc.new
+    sequential = Y::Ruby::Doc.new
     updates.each { |u| sequential.apply_update(u) }
 
     assert_equal sequential.encode_state_vector, doc.encode_state_vector
@@ -52,10 +52,10 @@ class ThreadSafetyTest < Minitest::Test
 
   def test_concurrent_sync_protocol_between_doc_pairs
     pairs = THREADS.times.map do
-      source = YrbLite::Doc.new
+      source = Y::Ruby::Doc.new
       source.apply_update(YjsFixtures::TwoDocsMerged::DOC1_UPDATE)
       source.apply_update(YjsFixtures::TwoDocsMerged::DOC2_UPDATE)
-      [source, YrbLite::Doc.new]
+      [source, Y::Ruby::Doc.new]
     end
 
     errors = run_threads do |i|
@@ -77,7 +77,7 @@ class ThreadSafetyTest < Minitest::Test
 
   def test_concurrent_fan_in_sync_to_shared_doc
     # Many threads sync different sources into ONE shared doc concurrently.
-    shared = YrbLite::Doc.new
+    shared = Y::Ruby::Doc.new
     sources = [
       YjsFixtures::TwoDocsMerged::DOC1_UPDATE,
       YjsFixtures::TwoDocsMerged::DOC2_UPDATE
@@ -86,7 +86,7 @@ class ThreadSafetyTest < Minitest::Test
     errors = run_threads do |i|
       update = sources[i % sources.length]
       ITERATIONS.times do
-        message = YrbLite.wrap_update(update)
+        message = Y::Ruby.wrap_update(update)
         shared.handle_sync_message(message)
       end
     end
@@ -95,7 +95,7 @@ class ThreadSafetyTest < Minitest::Test
 
     # Compare against sequential application (state vector bytes aren't
     # canonical across implementations, so compare via our own encoding).
-    sequential = YrbLite::Doc.new
+    sequential = Y::Ruby::Doc.new
     sources.each { |u| sequential.apply_update(u) }
 
     assert_equal sequential.encode_state_vector, shared.encode_state_vector

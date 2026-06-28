@@ -1,4 +1,4 @@
-// yrs Fixture Generator for yrb-lite interop testing
+// yrs Fixture Generator for y-ruby interop testing
 // Build with: cargo build --release
 // Run with: ./target/release/yrs_generator [command] [args...]
 

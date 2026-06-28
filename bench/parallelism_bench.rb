@@ -6,7 +6,7 @@
 #
 # Run: bundle exec ruby bench/parallelism_bench.rb
 
-require "yrb_lite"
+require "y/ruby"
 
 UPDATE = File.binread(File.expand_path("large_update.bin", __dir__))
 THREADS = Integer(ENV.fetch("THREADS", 8))
@@ -22,14 +22,14 @@ work = lambda do
   OPS_PER_THREAD.times do
     # Parse + apply a large update into a fresh doc, then re-encode its state.
     # It's all heavy native work, and embarrassingly parallel.
-    doc = YrbLite::Doc.new
+    doc = Y::Ruby::Doc.new
     doc.apply_update(UPDATE)
     doc.encode_state_as_update
   end
 end
 
 # Warm up (first call pays any lazy init)
-YrbLite::Doc.new.apply_update(UPDATE)
+Y::Ruby::Doc.new.apply_update(UPDATE)
 
 serial = time { THREADS.times { work.call } }
 parallel = time { THREADS.times.map { Thread.new(&work) }.each(&:join) }

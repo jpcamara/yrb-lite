@@ -1,6 +1,6 @@
-# yrb-lite
+# y-ruby
 
-[![CI](https://github.com/jpcamara/yrb-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/jpcamara/yrb-lite/actions/workflows/ci.yml)
+[![CI](https://github.com/jpcamara/y-ruby/actions/workflows/ci.yml/badge.svg)](https://github.com/jpcamara/y-ruby/actions/workflows/ci.yml)
 
 Collaborative editing for Rails, backed by [y-crdt](https://github.com/y-crdt/y-crdt)
 (the Rust library behind Y.js). Your Rails server speaks the y-websocket sync
@@ -9,7 +9,7 @@ documents.
 
 ```ruby
 class DocumentChannel < ApplicationCable::Channel
-  include YrbLite::ActionCable::Sync
+  include Y::Ruby::ActionCable::Sync
 
   on_load   { |key|         MyStore.load(key) }
   on_change { |key, update| MyStore.append(key, update) }
@@ -20,7 +20,7 @@ end
 ```
 
 On the browser, use the `ActionCableProvider` from the 
-[`yrb-lite-client`](https://www.npmjs.com/package/yrb-lite-client) npm package.
+[`@y-ruby/client`](https://www.npmjs.com/package/@y-ruby/client) npm package.
 Integrates with any editor that includes Y.js support, such as Tiptap, ProseMirror
 and [Lexxy](https://www.npmjs.com/package/lexxy-realtime).
 
@@ -29,8 +29,8 @@ and [Lexxy](https://www.npmjs.com/package/lexxy-realtime).
 Install the gem and npm package:
 
 ```
-gem install yrb-lite-actioncable # depends on yrb-lite
-npm install yrb-lite-client
+gem install y-ruby-actioncable # depends on y-ruby
+npm install @y-ruby/client
 ```
 
 ## What you get
@@ -45,7 +45,7 @@ npm install yrb-lite-client
 
 ## Why "lite"
 
-The "lite" is the size of the surface. `yrb-lite` binds just the part of `y-crdt` you
+The "lite" is the size of the surface. `y-ruby` binds just the part of `y-crdt` you
 need to *sync and persist* collaborative documents - a `Doc`, awareness, and the
 y-websocket protocol primitives. The Ruby side treats a document as opaque CRDT
 state: it applies updates, answers sync handshakes, and records deltas, but never
@@ -57,17 +57,17 @@ shape.
 The surface area may be "lite", but a core focus is on durability, resiliency, delivery
 guarantees, correctness, and thread safety.
 
-Towards that goal, `yrb-lite` adds capabilities that may even stand out in the Yjs ecosystem:
+Towards that goal, `y-ruby` adds capabilities that may even stand out in the Yjs ecosystem:
 
-- Built-in update acknowledgement: the `ActionCableProvider` in `yrb-lite-client` will continue to
-  send updates until an ack is received from the server. [`yrb-lite-actioncable`](https://rubygems.org/gems/yrb-lite-actioncable)
+- Built-in update acknowledgement: the `ActionCableProvider` in `@y-ruby/client` will continue to
+  send updates until an ack is received from the server. [`y-ruby-actioncable`](https://rubygems.org/gems/y-ruby-actioncable)
   only sends an ack when applying an update is successful. The goal is at-least-once delivery,
   and because CRDTs are idempotent a duplicate update is effectively a no-op.
 - Gap detection in document updates: before applying an update and sending an ack to the client,
-  `yrb-lite` checks whether the update results in any causal gap. Ie, an update comes through
+  `y-ruby` checks whether the update results in any causal gap. Ie, an update comes through
   which depends on a previous update that is not yet present in the document. This can result in
   a document stuck with "pending" updates, which will _never_ apply if the missing update is not sent.
-  To avoid this, `yrb-lite` does not apply the update, and starts a new y-protocol sync with the client.
+  To avoid this, `y-ruby` does not apply the update, and starts a new y-protocol sync with the client.
   That will cause the client to synchronize its document with the server, sending through any updates
   that may have been missed
 
@@ -76,7 +76,7 @@ Towards that goal, `yrb-lite` adds capabilities that may even stand out in the Y
 `yrb` has a much larger interface that gives you most of the Yjs type system - 
 shared text, arrays, maps, XML - to build and query documents in Ruby. It was a great
 inspiration for my use of Yjs in Ruby/Rails, and I originally considered building
-on top of it. There are a few reasons I went with `yrb-lite` instead:
+on top of it. There are a few reasons I went with `y-ruby` instead:
 
 - `yrb` is largely unmaintained. It was built as an experiment for GitLab, and the original
   author mostly moved onto other projects.
@@ -97,10 +97,10 @@ Issues and PRs are welcome.
 
 ```ruby
 # Core CRDT + protocol primitives:
-gem "yrb-lite"
+gem "y-ruby"
 
-# For the Rails/ActionCable server concern (YrbLite::ActionCable::Sync):
-gem "yrb-lite-actioncable"
+# For the Rails/ActionCable server concern (Y::Ruby::ActionCable::Sync):
+gem "y-ruby-actioncable"
 ```
 
 Requires Ruby 3.4 or newer. The release workflow builds precompiled gems for
@@ -111,8 +111,8 @@ no Rust; a source build needs [Rust](https://rustup.rs).
 To work on the gem itself:
 
 ```bash
-git clone https://github.com/jpcamara/yrb-lite
-cd yrb-lite
+git clone https://github.com/jpcamara/y-ruby
+cd y-ruby
 bundle install
 bundle exec rake compile test
 ```
@@ -132,11 +132,11 @@ The rest of the dev setup, plus the demo, is in [CONTRIBUTING.md](CONTRIBUTING.m
 ### Doc (Low-Level Document Sync)
 
 ```ruby
-require "yrb_lite"
+require "y/ruby"
 
 # Create docs
-doc = YrbLite::Doc.new        # random client ID
-doc = YrbLite::Doc.new(12345) # specific client ID (used for CRDT identity)
+doc = Y::Ruby::Doc.new        # random client ID
+doc = Y::Ruby::Doc.new(12345) # specific client ID (used for CRDT identity)
 
 # Encoding
 doc.encode_state_vector           # => current state vector
@@ -155,26 +155,26 @@ doc.handle_sync_message(data)     # => [msg_type, sync_type, response]; answers 
 ### Protocol codec (module functions)
 
 Classifying and unwrapping wire frames is stateless, so it's exposed as
-`YrbLite` module functions rather than a class. The server never holds presence
+`Y::Ruby` module functions rather than a class. The server never holds presence
 or document state to route a frame — presence lives in the browser clients, and
 the server only relays awareness frames opaquely.
 
 ```ruby
-YrbLite.message_kind(frame)         # => 0 drop / 1 step1 / 2 update / 3 awareness / 4 query
-YrbLite.update_from_message(frame)  # => the document delta carried by a frame, or nil
-YrbLite.wrap_update(update_bytes)   # => wrap a raw doc update as a sync Update frame
+Y::Ruby.message_kind(frame)         # => 0 drop / 1 step1 / 2 update / 3 awareness / 4 query
+Y::Ruby.update_from_message(frame)  # => the document delta carried by a frame, or nil
+Y::Ruby.wrap_update(update_bytes)   # => wrap a raw doc update as a sync Update frame
 ```
 
 ### ActionCable Integration
 
-`YrbLite::ActionCable::Sync` (from the `yrb-lite-actioncable` gem) is a channel
+`Y::Ruby::ActionCable::Sync` (from the `y-ruby-actioncable` gem) is a channel
 concern that implements the full y-websocket protocol (document sync +
 awareness/presence) over ActionCable:
 
 ```ruby
 # app/channels/document_channel.rb
 class DocumentChannel < ApplicationCable::Channel
-  include YrbLite::ActionCable::Sync
+  include Y::Ruby::ActionCable::Sync
 
   on_load { |key| MyStore.load(key) }                 # source of truth
   on_change { |key, update| MyStore.append(key, update) } # durable record
@@ -197,7 +197,7 @@ for the same document as long as they share the same store and cable adapter.
 
 `on_load` and `on_change` are required. If either is missing, the channel fails 
 before it can acknowledge or broadcast edits. Presence is ephemeral:
-awareness frames are relayed, and `yrb-lite-client` sends a best-effort
+awareness frames are relayed, and `@y-ruby/client` sends a best-effort
 presence-removal frame on disconnect/pagehide, with the client-side awareness
 timeout as the fallback for abrupt disconnects.
 
@@ -263,16 +263,16 @@ convergence, fresh reads on both, presence across processes, and one shared log.
 
 ##### AnyCable
 
-`yrb-lite` fully supports AnyCable.
+`y-ruby` fully supports AnyCable.
 
 The demo checks this against a real anycable-go + RPC server
 (`frontend/anycable_probe.mjs`, `anycable_concurrent.mjs`): liveness, the
-yrb-lite client provider, cross-process reads, and concurrent convergence.
+y-ruby client provider, cross-process reads, and concurrent convergence.
 
 ##### Demo
 
 [`examples/actioncable-demo`](examples/actioncable-demo) is a full Rails + Tiptap
-app using the yrb-lite provider, with end-to-end tests.
+app using the y-ruby provider, with end-to-end tests.
 
 #### Record Before Distribute
 
@@ -281,7 +281,7 @@ It is up to you to durably record it:
 
 ```ruby
 class DocumentChannel < ApplicationCable::Channel
-  include YrbLite::ActionCable::Sync
+  include Y::Ruby::ActionCable::Sync
 
   # ...
 
@@ -305,7 +305,7 @@ end to end that the log alone rebuilds the document.
 
 #### Reliable delivery (acks)
 
-yrb-lite document delivery is ack-tracked. Browser document updates carry an
+y-ruby document delivery is ack-tracked. Browser document updates carry an
 `"id"`, and the server replies `{ "ack": <id> }` once `on_change` has succesfully fired.
 A causally-gapped update is not acked; the server sends a resync request, and
 the client keeps the update queued until it lands.
@@ -315,7 +315,7 @@ client -> server   { "update": "<base64 update>", "id": 42 }
 server -> client   { "ack": 42 }     # update accepted; safe to forget
 ```
 
-`yrb-lite-client`'s `ActionCableProvider` handles this automatically. It keeps
+`@y-ruby/client`'s `ActionCableProvider` handles this automatically. It keeps
 the unacknowledged local document tail in a queue and sends the merged tail as a
 single causally-complete delta. The id is the highest sequence in the batch, so
 one `{ ack: id }` cumulatively confirms everything up to it. Because CRDT apply
@@ -324,7 +324,7 @@ re-acks. Awareness stays ephemeral and is not acked.
 
 Presence (cursors, selections) is owned by the browser clients — the server
 never sets or holds presence state, it only relays awareness frames opaquely.
-See `yrb-lite-client` for the client-side awareness API.
+See `@y-ruby/client` for the client-side awareness API.
 
 ## Thread Safety
 
@@ -361,12 +361,12 @@ exceptions.
 ## Message Type Constants
 
 ```ruby
-YrbLite::MSG_SYNC            # 0 - Document sync messages
-YrbLite::MSG_AWARENESS       # 1 - User presence data
+Y::Ruby::MSG_SYNC            # 0 - Document sync messages
+Y::Ruby::MSG_AWARENESS       # 1 - User presence data
 
-YrbLite::MSG_SYNC_STEP1      # 0 - State vector request
-YrbLite::MSG_SYNC_STEP2      # 1 - Update response
-YrbLite::MSG_SYNC_UPDATE     # 2 - Incremental update
+Y::Ruby::MSG_SYNC_STEP1      # 0 - State vector request
+Y::Ruby::MSG_SYNC_STEP2      # 1 - Update response
+Y::Ruby::MSG_SYNC_UPDATE     # 2 - Incremental update
 ```
 
 ## Sync Flow
