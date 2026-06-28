@@ -1,0 +1,24 @@
+<% content_for :head do %>
+<style>
+ .demo{margin:1.5rem}
+ #presence{margin:.4rem 0;min-height:1.5rem}.chip{color:#fff;padding:2px 8px;border-radius:999px;font-size:12px;margin-right:4px}
+ #form{max-width:460px}.field{display:block;margin-bottom:.8rem}.field span{display:block;font-size:12px;color:#555;margin-bottom:.2rem}
+ .field input,.field select,.field textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;font:14px system-ui}
+ .field textarea{height:5rem;resize:vertical}
+</style>
+<% end %>
+<div class="demo">
+  <header>
+    <h1>Collaborative form</h1>
+    <%= render "nav" %>
+    <p>
+      Opaque state is a <code>Y.Map</code> keyed by field. Fill it in two windows.
+      Field values are last-writer-wins per field; swap a field to <code>Y.Text</code>
+      for character-merge (see the CodeMirror page).
+    </p>
+    <div id="presence"></div>
+    <p id="status" class="status">connecting…</p>
+  </header>
+  <div id="form" data-document-id="<%= @document_id %>:forms"></div>
+</div>
+<script src="/forms.js" defer></script>

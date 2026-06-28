@@ -32,6 +32,25 @@ Open http://localhost:3000 in two windows and type. Text and cursors sync
 between them. Open http://localhost:3000/docs/demo/content to watch the
 server's own view of the document.
 
+### Opaque-state demos
+
+yrb-lite moves opaque CRDT updates without knowing what shared types are inside,
+so the same `DocumentChannel` syncs *any* Yjs shape. The same document is
+reachable through several front ends (linked from the nav on each page):
+
+| Page | Opaque state | Binding |
+|------|--------------|---------|
+| `/docs/demo` | `Y.XmlFragment` | Tiptap (rich text) |
+| `/docs/demo/lexxy` | `Y.XmlText` | Lexxy / Lexical |
+| `/docs/demo/codemirror` | `Y.Text` | CodeMirror 6 (code + cursors) |
+| `/docs/demo/whiteboard` | `Y.Map` of shapes | draggable sticky notes |
+| `/docs/demo/kanban` | `Y.Array` of card `Y.Map`s | add / move / delete |
+| `/docs/demo/forms` | `Y.Map` of fields | co-filled form |
+
+Each is a self-contained entry under `frontend/src/`; the only thing that differs
+is the Yjs binding. A two-window agent-browser check for the last four lives in
+`frontend/opaque_demos_e2e.mjs` (run the server with `STORE_KIND=file` first).
+
 > The default durable store is Postgres, reached over the `/tmp` unix socket — so
 > "Run it" above expects a local Postgres. To avoid that (or a port clash with
 > your own services), use Docker below.

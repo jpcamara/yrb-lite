@@ -1,0 +1,27 @@
+<% content_for :head do %>
+<style>
+ .demo{margin:1.5rem}
+ #presence{margin:.4rem 0;min-height:1.5rem}.chip{color:#fff;padding:2px 8px;border-radius:999px;font-size:12px;margin-right:4px}
+ #board{display:flex;gap:1rem;align-items:flex-start}
+ .col{flex:1;background:#f6f7f9;border:1px solid #e5e7eb;border-radius:10px;padding:.6rem;min-height:8rem}
+ .col h3{margin:.1rem 0 .5rem;font-size:.95rem;color:#374151}
+ .card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:.45rem .55rem;margin-bottom:.45rem;display:flex;justify-content:space-between;gap:.4rem;align-items:center;box-shadow:0 1px 1px rgba(0,0,0,.04)}
+ .card .t{flex:1}.ctl button{border:1px solid #d1d5db;background:#fff;border-radius:5px;cursor:pointer;font-size:12px;padding:1px 5px;margin-left:2px}
+ .add input{width:100%;box-sizing:border-box;border:1px dashed #cbd5e1;border-radius:6px;padding:5px 7px;font:13px system-ui;background:transparent;margin-top:.2rem}
+</style>
+<% end %>
+<div class="demo">
+  <header>
+    <h1>Collaborative kanban</h1>
+    <%= render "nav" %>
+    <p>
+      Opaque state is a <code>Y.Array</code> of card <code>Y.Map</code>s. Add, move
+      (←/→), delete — across two windows. Moves are one <code>map.set</code>, so
+      concurrent moves never conflict.
+    </p>
+    <div id="presence"></div>
+    <p id="status" class="status">connecting…</p>
+  </header>
+  <div id="board" data-document-id="<%= @document_id %>:kanban"></div>
+</div>
+<script src="/kanban.js" defer></script>

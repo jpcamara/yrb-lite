@@ -6,5 +6,9 @@
 /public/app.js
 /public/lexxy.js
 /public/lexxy.css
+/public/codemirror.js
+/public/whiteboard.js
+/public/kanban.js
+/public/forms.js
 .DS_Store
 /config/master.key

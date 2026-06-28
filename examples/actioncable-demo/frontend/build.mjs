@@ -54,6 +54,11 @@ const dedupeSingletons = {
 const ENTRIES = [
   { entry: "src/app.js", name: "app.js" },
   { entry: "src/lexxy.js", name: "lexxy.js" },
+  // "Opaque state" demos: the SAME DocumentChannel syncs any Yjs shape.
+  { entry: "src/codemirror.js", name: "codemirror.js" }, // Y.Text + CodeMirror 6
+  { entry: "src/whiteboard.js", name: "whiteboard.js" }, // Y.Map of shapes
+  { entry: "src/kanban.js", name: "kanban.js" },         // Y.Array of card Y.Maps
+  { entry: "src/forms.js", name: "forms.js" },           // Y.Map of fields
 ]
 
 // Lexxy dynamically imports @rails/activestorage for attachment uploads, which
