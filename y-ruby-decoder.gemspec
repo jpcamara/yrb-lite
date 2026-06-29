@@ -36,7 +36,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "base64", "~> 0.2"
   # Needs the Doc content readers (root_names / read_text / read_xml). Bump the
   # floor to the first published core release that ships them.
-  spec.add_dependency "y-ruby", ">= 0.1.0.beta7"
+  spec.add_dependency "y-ruby", ">= 0.2.0"
 
   spec.add_development_dependency "minitest", "~> 5.0"
   spec.add_development_dependency "rake", "~> 13.0"
