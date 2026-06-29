@@ -1,23 +1,26 @@
 {
   "name": "yrby-client",
-  "version": "0.4.0",
-  "description": "JavaScript client for the yrby y-websocket protocol: a ready-made ActionCable/AnyCable provider, a transport-agnostic protocol session (sync steps, encode/decode, awareness), and a reliable-delivery core (ack-tracked queue, sync-since-last-ack, retransmit + reconnect replay). Written in TypeScript with bundled types; usable from plain JS.",
+  "version": "0.4.1",
+  "description": "JavaScript client for the yrby y-websocket protocol: a ready-made ActionCable/AnyCable provider, a transport-agnostic protocol session (sync steps, encode/decode, awareness), and a reliable-delivery core (ack-tracked queue, sync-since-last-ack, retransmit + reconnect replay). Written in TypeScript with bundled types; ESM + CommonJS, usable from plain JS.",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/cjs/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/cjs/index.js"
     },
     "./reliable": {
       "types": "./dist/reliable_sync.d.ts",
-      "default": "./dist/reliable_sync.js"
+      "import": "./dist/reliable_sync.js",
+      "require": "./dist/cjs/reliable_sync.js"
     },
     "./base64": {
       "types": "./dist/base64.d.ts",
-      "default": "./dist/base64.js"
+      "import": "./dist/base64.js",
+      "require": "./dist/cjs/base64.js"
     }
   },
   "files": [
@@ -26,7 +29,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "npm run clean && tsc",
+    "build": "npm run clean && tsc && tsc -p tsconfig.cjs.json && node -e \"require('fs').writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }) + '\\n')\"",
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build",
     "test": "npm run build && node --test"
