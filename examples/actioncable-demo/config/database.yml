@@ -14,12 +14,12 @@ default: &default
 
 development:
   <<: *default
-  database: y_ruby_demo_development
+  database: yrby_demo_development
 
 test:
   <<: *default
-  database: y_ruby_demo_test
+  database: yrby_demo_test
 
 production:
   <<: *default
-  database: y_ruby_demo_production
+  database: yrby_demo_production

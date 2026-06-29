@@ -56,7 +56,7 @@ class InteropTest < Minitest::Test
   # Y.js -> yrby tests
   # ============================================================================
 
-  def test_yjs_update_applied_to_y_ruby
+  def test_yjs_update_applied_to_yrby
     result = yjs("create-doc", 1, "content", "hello from yjs")
 
     doc = Y::Doc.new
@@ -67,7 +67,7 @@ class InteropTest < Minitest::Test
     assert_equal b64_decode(result["state_vector"]).bytesize, doc.encode_state_vector.bytesize
   end
 
-  def test_yjs_empty_doc_matches_y_ruby
+  def test_yjs_empty_doc_matches_yrby
     result = yjs("empty-doc", 1)
 
     doc = Y::Doc.new
@@ -75,7 +75,7 @@ class InteropTest < Minitest::Test
     assert_equal b64_decode(result["state_vector"]), doc.encode_state_vector
   end
 
-  def test_y_ruby_can_read_yjs_merged_docs
+  def test_yrby_can_read_yjs_merged_docs
     doc1 = yjs("create-doc", 1, "content", "from doc1")
     doc2 = yjs("create-doc", 2, "content", "from doc2")
 
@@ -95,7 +95,7 @@ class InteropTest < Minitest::Test
   # yrby -> Y.js tests
   # ============================================================================
 
-  def test_y_ruby_update_applied_to_yjs
+  def test_yrby_update_applied_to_yjs
     # Create a doc in yrby with Y.js update, then export and verify Y.js can read it
     yjs_doc = yjs("create-doc", 1, "content", "test content")
 
@@ -117,7 +117,7 @@ class InteropTest < Minitest::Test
     assert_equal "test content", text_result["content"]
   end
 
-  def test_y_ruby_empty_doc_matches_yjs
+  def test_yrby_empty_doc_matches_yjs
     doc = Y::Doc.new
     update = b64_encode(doc.encode_state_as_update)
 
@@ -130,7 +130,7 @@ class InteropTest < Minitest::Test
   # yrs -> yrby tests
   # ============================================================================
 
-  def test_yrs_update_applied_to_y_ruby
+  def test_yrs_update_applied_to_yrby
     result = yrs("create-doc", 1, "content", "hello from yrs")
 
     doc = Y::Doc.new
@@ -140,7 +140,7 @@ class InteropTest < Minitest::Test
     assert_equal b64_decode(result["state_vector"]), doc.encode_state_vector
   end
 
-  def test_yrs_empty_doc_matches_y_ruby
+  def test_yrs_empty_doc_matches_yrby
     result = yrs("empty-doc", 1)
 
     doc = Y::Doc.new
@@ -148,7 +148,7 @@ class InteropTest < Minitest::Test
     assert_equal b64_decode(result["state_vector"]), doc.encode_state_vector
   end
 
-  def test_y_ruby_can_read_yrs_merged_docs
+  def test_yrby_can_read_yrs_merged_docs
     doc1 = yrs("create-doc", 1, "content", "from doc1")
     doc2 = yrs("create-doc", 2, "content", "from doc2")
 
@@ -165,7 +165,7 @@ class InteropTest < Minitest::Test
   # yrby -> yrs tests
   # ============================================================================
 
-  def test_y_ruby_update_applied_to_yrs
+  def test_yrby_update_applied_to_yrs
     yrs_doc = yrs("create-doc", 1, "content", "test content")
 
     doc = Y::Doc.new
@@ -186,7 +186,7 @@ class InteropTest < Minitest::Test
   # Y.js <-> yrs cross-tests (via yrby)
   # ============================================================================
 
-  def test_yjs_to_yrs_via_y_ruby
+  def test_yjs_to_yrs_via_yrby
     # Create doc in Y.js
     yjs_doc = yjs("create-doc", 1, "content", "cross-platform test")
 
@@ -201,7 +201,7 @@ class InteropTest < Minitest::Test
     assert_equal "cross-platform test", yrs_result["content"]
   end
 
-  def test_yrs_to_yjs_via_y_ruby
+  def test_yrs_to_yjs_via_yrby
     # Create doc in yrs
     yrs_doc = yrs("create-doc", 1, "content", "rust to js test")
 
@@ -220,7 +220,7 @@ class InteropTest < Minitest::Test
   # Sync protocol tests
   # ============================================================================
 
-  def test_sync_protocol_yjs_initiates_y_ruby_responds
+  def test_sync_protocol_yjs_initiates_yrby_responds
     # Y.js has content
     yjs_doc = yjs("create-doc", 1, "content", "sync test")
 
@@ -243,7 +243,7 @@ class InteropTest < Minitest::Test
     assert_equal "sync test", text["content"]
   end
 
-  def test_sync_protocol_y_ruby_initiates_yrs_responds
+  def test_sync_protocol_yrby_initiates_yrs_responds
     # yrs has content
     yrs_doc = yrs("create-doc", 1, "content", "yrs sync test")
 
@@ -263,7 +263,7 @@ class InteropTest < Minitest::Test
     assert_equal b64_decode(yrs_doc["state_vector"]), doc.encode_state_vector
   end
 
-  def test_bidirectional_sync_yjs_and_y_ruby
+  def test_bidirectional_sync_yjs_and_yrby
     # Both have different content
     yjs_doc = yjs("create-doc", 1, "doc1", "yjs content")
 

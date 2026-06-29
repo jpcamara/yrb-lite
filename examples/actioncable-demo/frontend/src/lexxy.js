@@ -4,7 +4,7 @@
 // y-websocket protocol — so this is a drop-in second front end.
 //
 // lexxy-realtime ships the `<lexxy-collaboration>` custom element and a
-// `YrbLiteProvider` (the yrby-client ActionCableProvider). The collaboration
+// `YrbyProvider` (the yrby-client ActionCableProvider). The collaboration
 // element owns the editor binding, the empty-doc bootstrap, and remote cursors;
 // we just create the doc/provider, mount it inside a `<lexxy-editor>`, and
 // connect.
@@ -14,7 +14,7 @@ import "@37signals/lexxy"
 import "../node_modules/@37signals/lexxy/dist/stylesheets/lexxy.css"
 import * as Y from "yjs"
 import { createConsumer } from "@rails/actioncable"
-import { YrbLiteProvider } from "lexxy-realtime" // also registers <lexxy-collaboration>
+import { YrbyProvider } from "lexxy-realtime" // also registers <lexxy-collaboration>
 
 const NAMES = ["Ada", "Grace", "Linus", "Yukihiro", "Barbara", "Dennis", "Radia", "Alan"]
 const COLORS = ["#f87171", "#fb923c", "#facc15", "#4ade80", "#22d3ee", "#818cf8", "#e879f9", "#f472b6"]
@@ -30,7 +30,7 @@ const user = {
 
 const ydoc = new Y.Doc()
 const consumer = createConsumer()
-const provider = new YrbLiteProvider(ydoc, consumer, "DocumentChannel", { id: documentId })
+const provider = new YrbyProvider(ydoc, consumer, "DocumentChannel", { id: documentId })
 const awareness = provider.awareness // the provider owns presence; read it back
 
 // Exposed for the browser console (parity with the Tiptap page's window.__yrb).

@@ -24,7 +24,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: y_ruby_demo_development
+      POSTGRES_DB: yrby_demo_development
     ports:
       - "5442:5432"
     healthcheck:

@@ -296,7 +296,7 @@ module Y::ActionCable # rubocop:disable Style/ClassAndModuleChildren
     end
 
     def sync_stream_name
-      "y_ruby:#{@sync_key}"
+      "yrby:#{@sync_key}"
     end
 
     def sync_awareness_stream_name

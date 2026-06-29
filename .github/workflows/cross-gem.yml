@@ -92,7 +92,7 @@ jobs:
           ruby -e '
             require "y"
             require "base64"
-            lib = $LOADED_FEATURES.grep(/y_ruby\.(bundle|so)/).first
+            lib = $LOADED_FEATURES.grep(/yrby\.(bundle|so)/).first
             abi = RUBY_VERSION[/\d+\.\d+/]
             raise "no native library loaded" unless lib
             raise "expected the precompiled #{abi} subdir, got #{lib}" unless lib.include?("/#{abi}/")

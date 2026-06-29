@@ -252,7 +252,7 @@ stores are included, selected by `STORE_KIND`:
 Set up the table once:
 
 ```bash
-bin/rails db:prepare   # creates y_ruby_demo_development + document_changes
+bin/rails db:prepare   # creates yrby_demo_development + document_changes
 ```
 
 (`config/database.yml` defaults to the local socket as `$USER`.) `GET

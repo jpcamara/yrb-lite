@@ -34,7 +34,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "base64", "~> 0.2"
   # Floor raised for update_advances? + wire client-id frame validation.
-  spec.add_dependency "yrby", ">= 0.2.0"
+  spec.add_dependency "yrby", ">= 0.2.1"
   # The concern references ActionCable (channels, streaming, broadcasting) and
   # ActiveSupport (Concern, JSON coder) constants directly. Rails apps already
   # bundle these, but declaring them makes use outside a full Rails bundle fail

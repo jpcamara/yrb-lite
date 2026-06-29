@@ -29,7 +29,7 @@ Gem::Specification.new do |spec|
   ] - Dir["lib/yrby-actioncable.rb", "lib/y/action_cable.rb", "lib/y/action_cable/**/*"]
 
   spec.require_paths = ["lib"]
-  spec.extensions = ["ext/y_ruby/extconf.rb"]
+  spec.extensions = ["ext/yrby/extconf.rb"]
 
   spec.metadata["source_code_uri"] = spec.homepage
   spec.metadata["changelog_uri"] = "#{spec.homepage}/blob/main/CHANGELOG.md"

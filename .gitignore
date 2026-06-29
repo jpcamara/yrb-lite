@@ -15,10 +15,10 @@ Makefile
 mkmf.log
 
 # Extension build directory
-/ext/y_ruby/Makefile
-/ext/y_ruby/*.o
-/ext/y_ruby/*.so
-/ext/y_ruby/*.bundle
+/ext/yrby/Makefile
+/ext/yrby/*.o
+/ext/yrby/*.so
+/ext/yrby/*.bundle
 /lib/y/*.bundle
 /lib/y/*.so
 

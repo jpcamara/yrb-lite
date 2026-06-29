@@ -3,7 +3,7 @@ development:
   # server processes that share documents (e.g. the multi-process test).
   adapter: <%= ENV.fetch("CABLE_ADAPTER", "async") %>
   url: <%= ENV.fetch("REDIS_URL", "redis://localhost:6379/15") %>
-  channel_prefix: y_ruby_demo_dev
+  channel_prefix: yrby_demo_dev
 
 test:
   adapter: test

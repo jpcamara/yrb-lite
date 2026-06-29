@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-29
+
+### Changed
+- **Internal:** renamed the native extension crate `y_ruby` → `yrby` (now loads
+  from `lib/y/yrby.bundle`). No public API change — `require "y"` and `Y::Doc`
+  are unchanged.
+
 ## [0.2.0] - 2026-06-28
 
 First release under the **`yrby`** name (the project was previously developed
@@ -15,8 +22,8 @@ mirroring the `y-rb` gem's `Y::Doc` interface.
 ### Changed
 - **Renamed `yrb-lite` → `yrby`.** Module `YrbLite` → top-level `Y`
   (`Y::Doc`, `Y::Error`, `Y::VERSION`). Require path `require "yrb_lite"` →
-  `require "y"`. Native extension crate `yrb_lite` → `y_ruby`, loaded from
-  `lib/y/y_ruby.bundle`.
+  `require "y"`. (The native extension crate shipped as `y_ruby` in 0.2.0; see
+  0.2.1 for its rename to `yrby`.)
 
 ### Added
 - Native `Doc#read_text` and `Doc#read_map` readers — reconstruct plain text and

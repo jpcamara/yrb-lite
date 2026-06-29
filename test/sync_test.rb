@@ -98,7 +98,7 @@ class SyncTest < Minitest::Test
     helper = helper_for(store: store)
     helper.sync_subscribed("doc")
 
-    assert_equal [["y_ruby:doc", {}, true]], helper.streams
+    assert_equal [["yrby:doc", {}, true]], helper.streams
     assert_equal 1, helper.transmits.length
 
     response = Base64.strict_decode64(helper.transmits.first["update"])
@@ -112,9 +112,9 @@ class SyncTest < Minitest::Test
     helper.define_singleton_method(:whispers_to) { |_broadcasting| nil }
     helper.sync_subscribed("doc")
 
-    assert_includes helper.streams, ["y_ruby:doc", {}, true],
+    assert_includes helper.streams, ["yrby:doc", {}, true],
                     "document stream has no whisper option"
-    assert_includes helper.streams, ["y_ruby:doc:awareness", { whisper: true }, true],
+    assert_includes helper.streams, ["yrby:doc:awareness", { whisper: true }, true],
                     "awareness stream is whisper-enabled"
   end
 

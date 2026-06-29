@@ -18,7 +18,7 @@ bundle install
 bundle exec rake compile        # build the Rust extension
 bundle exec rake test           # Ruby test suite (test/**/*_test.rb)
 
-cargo test  --manifest-path ext/y_ruby/Cargo.toml   # Rust unit tests
+cargo test  --manifest-path ext/yrby/Cargo.toml   # Rust unit tests
 ```
 
 ### Linting
@@ -27,18 +27,18 @@ CI enforces all of these; run them before opening a PR:
 
 ```bash
 bundle exec rubocop                                              # Ruby
-cargo fmt   --manifest-path ext/y_ruby/Cargo.toml -- --check   # Rust format
-cargo clippy --manifest-path ext/y_ruby/Cargo.toml --all-targets -- -D warnings
+cargo fmt   --manifest-path ext/yrby/Cargo.toml -- --check   # Rust format
+cargo clippy --manifest-path ext/yrby/Cargo.toml --all-targets -- -D warnings
 ```
 
-`cargo fmt --manifest-path ext/y_ruby/Cargo.toml` and `bundle exec rubocop -A`
+`cargo fmt --manifest-path ext/yrby/Cargo.toml` and `bundle exec rubocop -A`
 auto-fix most issues.
 
 ## Layout
 
 ```
 lib/                     # Ruby: Y::ActionCable::Sync (the ActionCable concern)
-ext/y_ruby/src/        # Rust: lib.rs (magnus bindings) + protocol.rs (pure protocol helpers)
+ext/yrby/src/        # Rust: lib.rs (magnus bindings) + protocol.rs (pure protocol helpers)
 test/                    # Ruby unit tests
 examples/actioncable-demo/   # a separate, deliberately thorough demo app (see below)
 ```

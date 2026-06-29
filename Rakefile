@@ -64,7 +64,7 @@ end
 # (`native:<platform> gem`) that the precompiled-gem build relies on.
 GEMSPEC = Gem::Specification.load("yrby.gemspec")
 
-RbSys::ExtensionTask.new("y_ruby", GEMSPEC) do |ext|
+RbSys::ExtensionTask.new("yrby", GEMSPEC) do |ext|
   ext.lib_dir = "lib/y"
 end
 
@@ -74,6 +74,6 @@ desc "Clean build artifacts"
 task :clean do
   sh "cargo clean" if File.exist?("Cargo.toml")
   rm_rf "tmp"
-  rm_rf "lib/y/y_ruby.bundle"
-  rm_rf "lib/y/y_ruby.so"
+  rm_rf "lib/y/yrby.bundle"
+  rm_rf "lib/y/yrby.so"
 end
