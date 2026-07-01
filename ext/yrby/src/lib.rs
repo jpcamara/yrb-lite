@@ -6,6 +6,7 @@ use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{Doc, GetString, ReadTxn, Transact};
 
+mod map;
 mod protocol;
 mod read;
 use protocol::{
@@ -30,6 +31,7 @@ struct RbDoc(Doc);
 fn assert_thread_safe() {
     fn is_send_sync<T: Send + Sync>() {}
     is_send_sync::<Doc>();
+    is_send_sync::<map::RbMap>();
 }
 
 /// Run `f` with the GVL (Global VM Lock) released, so other Ruby threads,
@@ -53,7 +55,7 @@ fn assert_thread_safe() {
 ///
 /// Panics inside the closure are caught and re-raised (resumed) after the GVL
 /// is reacquired, where magnus converts them to Ruby exceptions.
-fn nogvl<F, R>(f: F) -> R
+pub(crate) fn nogvl<F, R>(f: F) -> R
 where
     F: FnOnce() -> R + Send,
     R: Send,
@@ -112,7 +114,7 @@ fn copy_bytes(s: RString) -> Vec<u8> {
 /// native decode/apply failures surface as a project-specific error rather than
 /// a generic RuntimeError. Falls back to RuntimeError only if the class somehow
 /// can't be resolved.
-fn yrb_error(msg: String) -> Error {
+pub(crate) fn yrb_error(msg: String) -> Error {
     let ruby = Ruby::get().unwrap();
     let class = ruby
         .eval::<ExceptionClass>("Y::Error")
@@ -211,6 +213,13 @@ impl RbDoc {
         let update = nogvl(move || integrated_update(doc, &yrs::StateVector::default()))
             .map_err(yrb_error)?;
         Ok(binary_string(&update))
+    }
+
+    /// A live `Y::Map` handle to the root map named `name` (created if absent).
+    /// Unlike `read_map` (a JSON snapshot), the returned handle reads and *writes*
+    /// the actual shared map, with the same thread-safety guarantees as the Doc.
+    fn get_map(&self, name: String) -> map::RbMap {
+        map::root_map(&self.0, name)
     }
 
     /// Encode state as update (optionally diffed against a state vector)
@@ -400,6 +409,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         "compacted_state_update",
         method!(RbDoc::compacted_state_update, 0),
     )?;
+    doc_class.define_method("get_map", method!(RbDoc::get_map, 1))?;
     doc_class.define_method("update_ready?", method!(RbDoc::update_ready, 1))?;
     doc_class.define_method("update_advances?", method!(RbDoc::update_advances, 1))?;
     doc_class.define_method("sync_step1", method!(RbDoc::sync_step1, 0))?;
@@ -407,6 +417,9 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         "handle_sync_message",
         method!(RbDoc::handle_sync_message, 1),
     )?;
+    // Live shared-type handles.
+    map::define(ruby, module)?;
+
     // Stateless protocol codec, as Y module functions.
     module.define_module_function("wrap_update", function!(wrap_update, 1))?;
     module.define_module_function("message_kind", function!(message_kind, 1))?;
